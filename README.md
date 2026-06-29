@@ -84,9 +84,3 @@ npm run build       # TypeScriptビルド
 npm run dev         # 開発モード
 ```
 
-## トラブルシュート
-
-- **MCPサーバーが起動しない**: `npm run build` 後に `node dist/index.js` で手動確認
-- **gitleaks が見つからない**: `npm install` を再実行し `bin/gitleaks` の存在を確認
-- **ESM関連エラー**: `tsconfig.json` の `module: NodeNext` と `package.json` の `"type": "module"` を確認
-- **テストが失敗**: msw モック設定と fixtures のサンプルコードを確認
