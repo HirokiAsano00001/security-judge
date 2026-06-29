@@ -1,0 +1,12 @@
+{
+  "name": "security-judge-target-app",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Intentionally vulnerable Express app for E2E testing",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

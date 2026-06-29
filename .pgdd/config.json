@@ -1,0 +1,53 @@
+{
+  "phases": [
+    {
+      "id": "project_setup",
+      "name": "プロジェクトセットアップ",
+      "allow": ["package.json", "tsconfig.json", "vitest.config.ts", "scripts/", ".github/workflows/", "bin/"],
+      "block": ["src/", "__tests__/", "test/"],
+      "completionCondition": "プロジェクトルートが作成され、npm install が成功し、package.json / tsconfig.json（module: NodeNext）/ vitest.config.ts が設定済みで、npx security-judge@1.x で起動可能な npm publishable 構成になっていること"
+    },
+    {
+      "id": "type_definitions",
+      "name": "型定義",
+      "allow": ["src/types/"],
+      "block": ["src/tools/", "src/attack/", "src/recon/", "src/scorer/", "src/reporter/", "src/safety/", "__tests__/", "test/"],
+      "completionCondition": "src/types/index.ts に MCPツール・攻撃ロジック・スコアリング・レポートで共有する型が定義され、tsc --noEmit が型エラーなく通過すること"
+    },
+    {
+      "id": "core_implementation",
+      "name": "MCPサーバー本体実装",
+      "allow": ["src/"],
+      "block": ["__tests__/", "test/", ".github/workflows/"],
+      "completionCondition": "src/ 全体（index.ts / tools 9本 / attack 2本 / recon・analyzers / scorer / reporter / safety）が実装され、npm run dev で MCPサーバーが起動し、Claude Code から MCPツール9本が呼び出せること"
+    },
+    {
+      "id": "test_target_app",
+      "name": "E2E用テスト脆弱アプリ構築",
+      "allow": ["test/target-app/"],
+      "block": ["src/", "__tests__/"],
+      "completionCondition": "test/target-app/ に BOLA/IDOR・権限昇格・JWT・SSRF 等を再現する意図的脆弱アプリが構築され、ローカルで起動・疎通確認できること"
+    },
+    {
+      "id": "test_implementation",
+      "name": "テスト実装",
+      "allow": ["__tests__/", "src/"],
+      "block": [".github/workflows/"],
+      "completionCondition": "__tests__/（unit / integration / fixtures）に vitest + msw のテストが実装され、npm test がパスし、カバレッジが 80% 以上であること"
+    },
+    {
+      "id": "ci_command",
+      "name": "CI・カスタムコマンド整備",
+      "allow": [".github/workflows/", ".claude/commands/"],
+      "block": ["src/", "__tests__/"],
+      "completionCondition": ".github/workflows/ci.yml と .claude/commands/ が整備され、CI上で npm test が通過し、カスタムコマンドが Claude Code から実行できること"
+    },
+    {
+      "id": "release_verification",
+      "name": "リリース検証・ドキュメント",
+      "allow": ["./"],
+      "block": [],
+      "completionCondition": "npm run dev でMCPサーバー起動・MCPツール9本呼び出し・npx security-judge@1.x 起動・MCP登録・npm test 80%カバレッジ の全必須検証が通過し、README.md / BUILDLOG.md が最新状態で npm publishable であること"
+    }
+  ]
+}

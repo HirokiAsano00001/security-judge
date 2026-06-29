@@ -1,0 +1,34 @@
+# 依存関係
+node_modules/
+
+# ビルド出力
+dist/
+
+# gitleaks バイナリ（postinstall で自動取得するため）
+bin/
+
+# テストカバレッジ
+coverage/
+
+# npm pack 出力
+*.tgz
+
+# 環境変数
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript キャッシュ
+*.tsbuildinfo
+
+# ログ
+*.log
