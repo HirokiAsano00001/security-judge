@@ -29,27 +29,6 @@ Claude Code の MCP ツールとして動作するセキュリティ評価エー
 }
 ```
 
-### ローカル開発
-
-```bash
-git clone <repo>
-cd security-judge
-npm install       # gitleaks が bin/ に自動配置される
-npm run build
-
-# Claude Code への登録
-```
-
-```json
-{
-  "mcpServers": {
-    "security-judge": {
-      "command": "node",
-      "args": ["<絶対パス>/security-judge/dist/index.js"]
-    }
-  }
-}
-```
 
 ## 使い方
 
