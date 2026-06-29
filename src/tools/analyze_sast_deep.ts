@@ -1,6 +1,7 @@
 import { execFileSync } from 'child_process'
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
+import { tmpdir } from 'os'
 import { fileURLToPath } from 'url'
 import { type JudgeContext, type Finding, type GitleaksSecret } from '../types/index.js'
 import { extractEndpoints } from '../recon/endpoint_extractor.js'
@@ -62,19 +63,26 @@ export async function analyzeSastDeep(
 function runGitleaks(sourcePath: string): GitleaksSecret[] {
   if (!existsSync(GITLEAKS_BIN)) return []
 
+  const reportPath = join(tmpdir(), `gitleaks-report-${process.pid}.json`)
   try {
-    const output = execFileSync(GITLEAKS_BIN, [
+    execFileSync(GITLEAKS_BIN, [
       'detect',
       '--source', sourcePath,
       '--report-format', 'json',
+      '--report-path', reportPath,
       '--no-git',
       '--exit-code', '0',
     ], { encoding: 'utf-8', timeout: 30000 })
 
-    if (!output.trim()) return []
-    return JSON.parse(output) as GitleaksSecret[]
+    if (!existsSync(reportPath)) return []
+    const content = readFileSync(reportPath, 'utf-8')
+    if (!content.trim()) return []
+    const all = JSON.parse(content) as GitleaksSecret[]
+    return all.filter(s => !GITLEAKS_IGNORE_DIRS.some(d => s.File.includes(`/${d}/`) || s.File.includes(`\\${d}\\`)))
   } catch {
     return []
+  } finally {
+    try { unlinkSync(reportPath) } catch { /* ignore */ }
   }
 }
 
@@ -86,6 +94,7 @@ const DANGEROUS_PATTERNS: Array<{ regex: RegExp; desc: string }> = [
 ]
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'target', '__pycache__', 'vendor'])
+const GITLEAKS_IGNORE_DIRS = ['node_modules', 'vendor', 'dist', 'target', '.git']
 const SOURCE_EXTS = new Set(['ts', 'js', 'java', 'py', 'go', 'rb'])
 
 function scanDangerousPatterns(sourcePath: string): Finding[] {
