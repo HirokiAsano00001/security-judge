@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { type SupportedLanguage } from '../types/index.js'
 
-interface DetectionResult {
+export interface DetectionResult {
   language: SupportedLanguage
   confidence: 'high' | 'medium' | 'low'
 }
@@ -20,40 +20,59 @@ function countFilesByExt(rootPath: string, ext: string): number {
   }
 }
 
-export function detectLanguage(rootPath: string): DetectionResult {
-  if (hasFile(rootPath, 'pom.xml') || hasFile(rootPath, 'build.gradle')) {
-    return { language: 'java', confidence: 'high' }
+export function detectLanguages(rootPath: string): DetectionResult[] {
+  const results: DetectionResult[] = []
+
+  if (hasFile(rootPath, 'pom.xml') || hasFile(rootPath, 'build.gradle') || hasFile(rootPath, 'build.gradle.kts')) {
+    results.push({ language: 'java', confidence: 'high' })
   }
 
   if (hasFile(rootPath, 'go.mod')) {
-    return { language: 'go', confidence: 'high' }
+    results.push({ language: 'go', confidence: 'high' })
   }
 
   if (hasFile(rootPath, 'Gemfile')) {
-    return { language: 'ruby', confidence: 'high' }
+    results.push({ language: 'ruby', confidence: 'high' })
   }
 
-  if (hasFile(rootPath, 'requirements.txt') || hasFile(rootPath, 'pyproject.toml')) {
-    return { language: 'python', confidence: 'high' }
+  if (hasFile(rootPath, 'requirements.txt') || hasFile(rootPath, 'pyproject.toml') || hasFile(rootPath, 'setup.py')) {
+    results.push({ language: 'python', confidence: 'high' })
   }
 
   if (hasFile(rootPath, 'package.json')) {
     const tsCount = countFilesByExt(rootPath, '.ts')
     const jsCount = countFilesByExt(rootPath, '.js')
     if (tsCount > jsCount) {
-      return { language: 'typescript', confidence: 'high' }
+      results.push({ language: 'typescript', confidence: 'high' })
+    } else {
+      results.push({ language: 'javascript', confidence: 'high' })
     }
-    return { language: 'javascript', confidence: 'high' }
   }
 
-  const javaCount = countFilesByExt(rootPath, '.java')
-  if (javaCount > 0) return { language: 'java', confidence: 'medium' }
+  if (results.length > 0) return results
 
-  const pyCount = countFilesByExt(rootPath, '.py')
-  if (pyCount > 0) return { language: 'python', confidence: 'medium' }
+  const byExt: Array<{ lang: SupportedLanguage; ext: string }> = [
+    { lang: 'java', ext: '.java' },
+    { lang: 'python', ext: '.py' },
+    { lang: 'go', ext: '.go' },
+    { lang: 'ruby', ext: '.rb' },
+    { lang: 'typescript', ext: '.ts' },
+    { lang: 'javascript', ext: '.js' },
+  ]
 
-  const goCount = countFilesByExt(rootPath, '.go')
-  if (goCount > 0) return { language: 'go', confidence: 'medium' }
+  for (const { lang, ext } of byExt) {
+    if (countFilesByExt(rootPath, ext) > 0) {
+      results.push({ language: lang, confidence: 'medium' })
+    }
+  }
 
-  return { language: 'javascript', confidence: 'low' }
+  if (results.length === 0) {
+    results.push({ language: 'javascript', confidence: 'low' })
+  }
+
+  return results
+}
+
+export function detectLanguage(rootPath: string): DetectionResult {
+  return detectLanguages(rootPath)[0]
 }

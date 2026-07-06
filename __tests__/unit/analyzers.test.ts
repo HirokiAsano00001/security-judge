@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { mkdirSync, writeFileSync, rmSync } from 'fs'
 import { GoAnalyzer } from '../../src/recon/analyzers/go.js'
 import { PythonAnalyzer } from '../../src/recon/analyzers/python.js'
 import { RubyAnalyzer } from '../../src/recon/analyzers/ruby.js'
@@ -10,6 +11,26 @@ import { NodeAnalyzer } from '../../src/recon/analyzers/node.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(__dirname, '../fixtures')
 const MISSING = '/nonexistent/path/that/does/not/exist'
+
+describe('GoAnalyzer - SKIP directory branch', () => {
+  const analyzer = new GoAnalyzer()
+
+  it('skips vendor but recurses into non-SKIP subdirs (both branches of &&)', async () => {
+    // vendor → SKIP (A=true, B=false branch)
+    mkdirSync(join(TMP_GO_SKIP, 'vendor', 'lib'), { recursive: true })
+    writeFileSync(join(TMP_GO_SKIP, 'vendor', 'lib', 'skip.go'),
+      `func handler(w http.ResponseWriter, r *http.Request) {}`)
+    // handlers → non-SKIP subdir (A=true, B=true branch → recurse)
+    mkdirSync(join(TMP_GO_SKIP, 'handlers'), { recursive: true })
+    writeFileSync(join(TMP_GO_SKIP, 'handlers', 'api.go'),
+      `mux.HandleFunc("/api/deep", handler)`)
+    writeFileSync(join(TMP_GO_SKIP, 'main.go'),
+      `mux.HandleFunc("/api/visible", handler)`)
+    const endpoints = await analyzer.analyze(TMP_GO_SKIP)
+    expect(endpoints.some(e => e.path === '/api/visible')).toBe(true)
+    expect(endpoints.some(e => e.path === '/api/deep')).toBe(true)
+  })
+})
 
 describe('GoAnalyzer', () => {
   const analyzer = new GoAnalyzer()
@@ -36,6 +57,26 @@ describe('GoAnalyzer', () => {
 
   it('returns empty array for nonexistent path', async () => {
     expect(await analyzer.analyze(MISSING)).toEqual([])
+  })
+})
+
+describe('PythonAnalyzer - SKIP directory branch', () => {
+  const analyzer = new PythonAnalyzer()
+
+  it('skips __pycache__ but recurses into non-SKIP subdirs (both branches of &&)', async () => {
+    // __pycache__ → SKIP (A=true, B=false branch)
+    mkdirSync(join(TMP_PY_SKIP, '__pycache__'), { recursive: true })
+    writeFileSync(join(TMP_PY_SKIP, '__pycache__', 'skip.py'),
+      `@app.route('/api/should-not-appear')`)
+    // views → non-SKIP subdir (A=true, B=true branch → recurse)
+    mkdirSync(join(TMP_PY_SKIP, 'views'), { recursive: true })
+    writeFileSync(join(TMP_PY_SKIP, 'views', 'api.py'),
+      `@app.route('/api/deep')\ndef handler(): pass`)
+    writeFileSync(join(TMP_PY_SKIP, 'routes.py'),
+      `@app.route('/api/visible')\ndef handler(): pass`)
+    const endpoints = await analyzer.analyze(TMP_PY_SKIP)
+    expect(endpoints.some(e => e.path === '/api/visible')).toBe(true)
+    expect(endpoints.some(e => e.path === '/api/deep')).toBe(true)
   })
 })
 
@@ -69,6 +110,26 @@ describe('PythonAnalyzer', () => {
 
   it('returns empty array for nonexistent path', async () => {
     expect(await analyzer.analyze(MISSING)).toEqual([])
+  })
+})
+
+describe('RubyAnalyzer - SKIP directory branch', () => {
+  const analyzer = new RubyAnalyzer()
+
+  it('skips vendor but recurses into non-SKIP subdirs (both branches of &&)', async () => {
+    // vendor → SKIP (A=true, B=false branch)
+    mkdirSync(join(TMP_RB_SKIP, 'vendor', 'gems'), { recursive: true })
+    writeFileSync(join(TMP_RB_SKIP, 'vendor', 'gems', 'skip.rb'),
+      `get '/api/should-not-appear' do end`)
+    // app → non-SKIP subdir (A=true, B=true branch → recurse)
+    mkdirSync(join(TMP_RB_SKIP, 'app'), { recursive: true })
+    writeFileSync(join(TMP_RB_SKIP, 'app', 'api.rb'),
+      `get '/api/deep' do end`)
+    writeFileSync(join(TMP_RB_SKIP, 'routes.rb'),
+      `get '/api/visible' do end`)
+    const endpoints = await analyzer.analyze(TMP_RB_SKIP)
+    expect(endpoints.some(e => e.path === '/api/visible')).toBe(true)
+    expect(endpoints.some(e => e.path === '/api/deep')).toBe(true)
   })
 })
 
@@ -139,6 +200,16 @@ describe('JavaAnalyzer', () => {
   })
 })
 
+const TMP_BASE = join(dirname(fileURLToPath(import.meta.url)), '../.tmp-analyzer')
+const TMP_NODE_SUBDIR = join(TMP_BASE, 'node')
+const TMP_GO_SKIP = join(TMP_BASE, 'go-skip')
+const TMP_PY_SKIP = join(TMP_BASE, 'py-skip')
+const TMP_RB_SKIP = join(TMP_BASE, 'rb-skip')
+
+afterEach(() => {
+  try { rmSync(TMP_BASE, { recursive: true, force: true }) } catch { /* ignore */ }
+})
+
 describe('NodeAnalyzer', () => {
   const analyzer = new NodeAnalyzer()
 
@@ -173,6 +244,25 @@ describe('NodeAnalyzer', () => {
     const endpoints = await analyzer.analyze(join(FIXTURES, 'node'))
     const tsEndpoints = endpoints.filter(e => e.sourceLanguage === 'typescript')
     expect(tsEndpoints.length).toBeGreaterThanOrEqual(0)
+  })
+
+  it('recursively scans subdirectories', async () => {
+    mkdirSync(join(TMP_NODE_SUBDIR, 'routes'), { recursive: true })
+    writeFileSync(join(TMP_NODE_SUBDIR, 'routes', 'users.js'),
+      `app.get('/api/deep/users', handler); app.post('/api/deep/users', create);`)
+    const endpoints = await analyzer.analyze(TMP_NODE_SUBDIR)
+    expect(endpoints.some(e => e.path === '/api/deep/users')).toBe(true)
+  })
+
+  it('skips node_modules directory (SKIP_DIRS branch)', async () => {
+    mkdirSync(join(TMP_NODE_SUBDIR, 'node_modules', 'some-lib'), { recursive: true })
+    writeFileSync(join(TMP_NODE_SUBDIR, 'node_modules', 'some-lib', 'index.js'),
+      `app.get('/api/should-not-appear', handler);`)
+    writeFileSync(join(TMP_NODE_SUBDIR, 'routes.js'),
+      `app.get('/api/visible', handler);`)
+    const endpoints = await analyzer.analyze(TMP_NODE_SUBDIR)
+    expect(endpoints.some(e => e.path === '/api/visible')).toBe(true)
+    expect(endpoints.some(e => e.path === '/api/should-not-appear')).toBe(false)
   })
 
   it('returns empty array for nonexistent path', async () => {

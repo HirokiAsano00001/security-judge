@@ -82,4 +82,22 @@ describe('detectLanguage', () => {
       expect(result.confidence).toBe('low')
     } finally { cleanup() }
   })
+
+  it('detects Python from .py extension only (medium confidence)', () => {
+    const dir = setupDir(['app.py', 'models.py'])
+    try {
+      const result = detectLanguage(dir)
+      expect(result.language).toBe('python')
+      expect(result.confidence).toBe('medium')
+    } finally { cleanup() }
+  })
+
+  it('detects Go from .go extension only (medium confidence)', () => {
+    const dir = setupDir(['main.go', 'handler.go'])
+    try {
+      const result = detectLanguage(dir)
+      expect(result.language).toBe('go')
+      expect(result.confidence).toBe('medium')
+    } finally { cleanup() }
+  })
 })

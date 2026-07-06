@@ -73,4 +73,12 @@ describe('testPrivilegeEscalation', () => {
     expect(result).toBeDefined()
     expect(ctx.findings).toHaveLength(0)
   })
+
+  it('handles url_guard block via continue (allowedUrls empty)', async () => {
+    const ctx = makeCtx()
+    ctx.allowedUrls = []
+    const result = await testPrivilegeEscalation({ endpoint: '/api/users/1/role', token: 'token' }, ctx)
+    expect(result).toContain('test_privilege_escalation')
+    expect(ctx.findings).toHaveLength(0)
+  })
 })

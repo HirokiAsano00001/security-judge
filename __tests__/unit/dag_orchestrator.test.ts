@@ -64,6 +64,26 @@ describe('runParallel', () => {
     await expect(runParallel([], ctx)).resolves.not.toThrow()
   })
 
+  it('breaks on circular dependencies (unresolvable batch)', async () => {
+    const ctx = makeCtx()
+    const tasks: DagTask[] = [
+      { id: 'a', dependsOn: ['b'], runner: async () => {} },
+      { id: 'b', dependsOn: ['a'], runner: async () => {} },
+    ]
+    await expect(runParallel(tasks, ctx)).resolves.not.toThrow()
+  })
+
+  it('handles non-Error thrown from task runner', async () => {
+    const ctx = makeCtx()
+    const executed: string[] = []
+    const tasks: DagTask[] = [
+      { id: 'throw-string', runner: async () => { throw 'non-error string' } },
+      { id: 'ok', runner: async () => { executed.push('ok') } },
+    ]
+    await expect(runParallel(tasks, ctx)).resolves.not.toThrow()
+    expect(executed).toContain('ok')
+  })
+
   it('passes ctx to runners', async () => {
     const ctx = makeCtx()
     let receivedCtx: JudgeContext | undefined

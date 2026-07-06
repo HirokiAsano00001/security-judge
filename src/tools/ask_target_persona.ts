@@ -48,6 +48,7 @@ export function askTargetPersona(
   ctx.findings = []
   ctx.extractedArtifacts = []
   ctx.score = 10
+  ctx.sessionCookies = undefined
 
   const lines = [
     `## Target configured`,

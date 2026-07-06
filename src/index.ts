@@ -11,6 +11,15 @@ import { testJwtTampering, TEST_JWT_TAMPERING_SCHEMA } from './tools/test_jwt_ta
 import { scanExposedEndpoints, SCAN_EXPOSED_ENDPOINTS_SCHEMA } from './tools/scan_exposed_endpoints.js'
 import { testSsrf, TEST_SSRF_SCHEMA } from './tools/test_ssrf.js'
 import { injectLlmJailbreak, INJECT_LLM_JAILBREAK_SCHEMA } from './tools/inject_llm_jailbreak.js'
+import { runAdaptivePentest, RUN_ADAPTIVE_PENTEST_SCHEMA } from './tools/run_adaptive_pentest.js'
+import { planPentest, PLAN_PENTEST_SCHEMA, investigateArea, INVESTIGATE_AREA_SCHEMA } from './tools/run_multi_agent_pentest.js'
+import { checkSecurityHeaders, CHECK_SECURITY_HEADERS_SCHEMA } from './tools/check_security_headers.js'
+import { testCors, TEST_CORS_SCHEMA } from './tools/test_cors.js'
+import { testSsti, TEST_SSTI_SCHEMA } from './tools/test_ssti.js'
+import { testPathTraversal, TEST_PATH_TRAVERSAL_SCHEMA } from './tools/test_path_traversal.js'
+import { scanDependencies, SCAN_DEPENDENCIES_SCHEMA } from './tools/scan_dependencies.js'
+import { loginAndCapture, LOGIN_AND_CAPTURE_SCHEMA } from './tools/login_and_capture.js'
+import { crawlTarget } from './recon/crawler.js'
 import { buildReport, formatReport } from './reporter/report.js'
 import { calculateScore } from './scorer/rubric.js'
 
@@ -48,7 +57,7 @@ server.tool(
 
 server.tool(
   'analyze_sast_deep',
-  'Run SAST analysis: tree-sitter AST scan + gitleaks secret detection. Extracts endpoints from source code.',
+  'SAST analysis: regex-based routing extraction + gitleaks secret detection + 30 dangerous pattern checks (SQLi, XSS, RCE, SSTI, deserialization, weak crypto, etc.).',
   {
     sourcePath: z.string(),
   },
@@ -60,7 +69,7 @@ server.tool(
 
 server.tool(
   'fuzz_api_direct',
-  'Fuzz a specific API endpoint with boundary values, SQLi, XSS payloads. Uses error-driven mutation (max 3 rounds).',
+  'Fuzz an API endpoint with SQLi, XSS, and boundary payloads. Uses oracle-based detection (DB error signatures, XSS reflection, stack trace analysis) with boolean-diff SQLi confirmation.',
   {
     endpoint: z.object({
       method: z.string(),
@@ -84,7 +93,7 @@ server.tool(
 
 server.tool(
   'test_bola_idor',
-  'Test BOLA/IDOR: access resources using alternate user IDs with attacker token.',
+  'Test BOLA/IDOR: access resources using alternate user IDs with attacker token. Provide victimToken for confirmed CRITICAL finding; without it reports HIGH (unconfirmed).',
   {
     victimToken: z.string().optional(),
     attackerToken: z.string(),
@@ -124,7 +133,7 @@ server.tool(
 
 server.tool(
   'scan_exposed_endpoints',
-  'Wordlist scan for exposed endpoints: Actuator, Swagger, .env, debug, admin paths.',
+  'Wordlist scan for exposed endpoints: Actuator, Swagger, .env, debug, admin paths. Filters SPA soft-404s.',
   {},
   async () => {
     const result = await scanExposedEndpoints({}, ctx)
@@ -156,6 +165,145 @@ server.tool(
   },
   async (input) => {
     const result = await injectLlmJailbreak(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'check_security_headers',
+  'Check HTTP security headers: HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy. Flags info-leak headers and CORS wildcard+credentials.',
+  {},
+  async () => {
+    const result = await checkSecurityHeaders({}, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'test_cors',
+  'Test CORS misconfiguration: evil-origin reflection, null-origin, suffix-bypass. Detects credentialed cross-origin requests.',
+  {
+    authToken: z.string().optional(),
+  },
+  async (input) => {
+    const result = await testCors(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'test_ssti',
+  'Test Server-Side Template Injection: {{7*7}}, ${7*7}, #{7*7} and other math-eval payloads. Confirms reflection first, then probes for SSTI.',
+  {
+    authToken: z.string().optional(),
+  },
+  async (input) => {
+    const result = await testSsti(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'test_path_traversal',
+  'Test path traversal / LFI: inject ../../etc/passwd and variants into file/path/template parameters. Uses oracle signature check for confirmation.',
+  {
+    authToken: z.string().optional(),
+  },
+  async (input) => {
+    const result = await testPathTraversal(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'scan_dependencies',
+  'Scan npm dependencies for known vulnerabilities using npm audit. Requires package-lock.json in sourcePath.',
+  {
+    sourcePath: z.string(),
+  },
+  async (input) => {
+    const result = await scanDependencies(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'login_and_capture',
+  'Login with credentials and capture session cookies. Automatically extracts CSRF tokens from login page HTML. Stores cookies in ctx for subsequent tool calls.',
+  {
+    loginUrl: z.string(),
+    username: z.string(),
+    password: z.string(),
+    usernameField: z.string().optional(),
+    passwordField: z.string().optional(),
+    submitAsJson: z.boolean().optional(),
+  },
+  async (input) => {
+    const result = await loginAndCapture(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'crawl_target',
+  'BFS crawl the target site to discover links and form endpoints. Adds discovered endpoints to ctx for subsequent attack tools.',
+  {
+    maxDepth: z.number().int().min(1).max(3).optional(),
+    maxUrls: z.number().int().min(1).max(100).optional(),
+  },
+  async (input) => {
+    const result = await crawlTarget(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'plan_pentest',
+  [
+    'Discovery phase for multi-agent pentest. Runs endpoint scan, OpenAPI fetch, and optional SAST.',
+    'Returns a JSON plan with investigation missions for Claude Code to orchestrate.',
+    'USAGE: Call this first, then spawn parallel agents each calling investigate_area for each mission.',
+    'Missions with dangerScore >= 6 should be deep-investigated with a second investigate_area call.',
+  ].join(' '),
+  {
+    sourcePath: z.string().optional(),
+    numMissions: z.number().int().min(1).max(10).default(10).optional(),
+  },
+  async (input) => {
+    const result = await planPentest(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'investigate_area',
+  [
+    'Scout investigation for one security focus area. Called by parallel agents after plan_pentest.',
+    'Returns JSON with findings and dangerScore (0-10). Score >= 6 indicates high risk.',
+    'dangerScore is computed as: CRITICAL=3pts, HIGH=2pts, MEDIUM=1pt, isFail=10 (instant).',
+  ].join(' '),
+  {
+    focusArea: z.string(),
+    targetPaths: z.array(z.string()),
+    attackTypes: z.array(z.enum(['fuzz', 'idor', 'privesc', 'jwt', 'ssrf', 'jailbreak'])),
+    authToken: z.string().optional(),
+  },
+  async (input) => {
+    const result = await investigateArea(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'run_adaptive_pentest',
+  'Autonomous adaptive pentest loop: discovers endpoints (Round 1), then iteratively selects and runs targeted attacks (fuzz/BOLA/SSRF/JWT/privesc/jailbreak) based on what is found. Stops when no new findings or maxRounds reached.',
+  {
+    maxRounds: z.number().int().min(1).max(5).default(3).optional(),
+    authToken: z.string().optional(),
+    sourcePath: z.string().optional(),
+  },
+  async (input) => {
+    const result = await runAdaptivePentest(input, ctx)
     return { content: [{ type: 'text', text: result }] }
   }
 )

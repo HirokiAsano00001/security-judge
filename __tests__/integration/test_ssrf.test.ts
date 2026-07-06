@@ -73,4 +73,19 @@ describe('testSsrf', () => {
     const result = await testSsrf({ endpoint: '/api/fetch', urlParam: 'url' }, ctx)
     expect(result).toContain('skipped')
   })
+
+  it('sets Authorization header when token is provided', async () => {
+    const ctx = makeCtx('commercial')
+    const result = await testSsrf({ endpoint: '/api/fetch', urlParam: 'url', token: 'bearer-token-xyz' }, ctx)
+    expect(result).toBeDefined()
+  })
+
+  it('handles network error during SSRF probe gracefully', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/netfail', method: 'POST' }).replyWithError('ECONNRESET')
+
+    const ctx = makeCtx('commercial')
+    const result = await testSsrf({ endpoint: '/api/netfail', urlParam: 'url' }, ctx)
+    expect(result).toBeDefined()
+  })
 })

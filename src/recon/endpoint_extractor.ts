@@ -1,5 +1,5 @@
 import { type EndpointInfo, type SupportedLanguage } from '../types/index.js'
-import { detectLanguage } from './language_detector.js'
+import { detectLanguages } from './language_detector.js'
 import { JavaAnalyzer } from './analyzers/java.js'
 import { NodeAnalyzer } from './analyzers/node.js'
 import { PythonAnalyzer } from './analyzers/python.js'
@@ -16,13 +16,27 @@ const ANALYZERS: Record<SupportedLanguage, () => { analyze(path: string): Promis
 }
 
 export async function extractEndpoints(sourcePath: string): Promise<EndpointInfo[]> {
-  const detection = detectLanguage(sourcePath)
-  const factory = ANALYZERS[detection.language]
+  const detections = detectLanguages(sourcePath)
+  const endpointSets = await Promise.all(
+    detections.map(async d => {
+      const factory = ANALYZERS[d.language]
+      if (!factory) return []
+      return factory().analyze(sourcePath)
+    })
+  )
 
-  if (!factory) {
-    return []
+  const seen = new Set<string>()
+  const merged: EndpointInfo[] = []
+
+  for (const endpoints of endpointSets) {
+    for (const ep of endpoints) {
+      const key = `${ep.method}:${ep.path}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push(ep)
+      }
+    }
   }
 
-  const analyzer = factory()
-  return analyzer.analyze(sourcePath)
+  return merged
 }

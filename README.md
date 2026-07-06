@@ -1,86 +1,155 @@
 # security-judge
 
-Claude Code の MCP ツールとして動作するセキュリティ評価エージェント。
-フロントエンドのUI制限を無視したAPIへの直接攻撃・静的解析・LLMジェイルブレイクを組み合わせ、最も厳格な基準でセキュリティ耐性を **0〜10点** で評価する。
+Claude Code MCP server for autonomous security testing of web applications.
 
-## 機能
+Runs SAST, fuzzing, BOLA/IDOR, JWT, SSRF, CORS, SSTI, path traversal, dependency auditing, and more against a target. Designed to work with Claude Code's native multi-agent orchestration — no separate API key required.
 
-- **9本のMCPツール**: SAST分析・ファジング・IDOR・JWT改ざん・SSRF・LLMジェイルブレイク等
-- **エラー駆動変異器**: エラーレスポンスを分析して最大3回の知性的な再攻撃
-- **ペルソナ別評価**: personal/team/internal/commercial の4段階
-- **自動スコアリング**: 0〜10点評価（即時フェイル判定付き）
-- **gitleaks統合**: シークレット検知（bin/ にローカル配置）
+## Requirements
 
-## インストール・登録
+- Node.js >= 22
+- Claude Code (claude.ai/code or CLI)
 
-### npx（推奨）
+## Installation
+
+```bash
+# Run directly without installing
+npx security-judge
+
+# Or install globally
+npm install -g security-judge
+```
+
+Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`):
 
 ```json
-// ~/.claude/settings.json または .claude/settings.local.json
 {
   "mcpServers": {
     "security-judge": {
       "command": "npx",
-      "args": ["-y", "security-judge@1.x"]
+      "args": ["-y", "security-judge"]
     }
   }
 }
 ```
 
+## Tools
 
-## 使い方
+### Recon & Setup
 
-Claude Code のチャット画面で:
+| Tool | OWASP | Description |
+|------|-------|-------------|
+| `ask_target_persona` | — | Set target URL, persona, and options. **Run this first.** |
+| `login_and_capture` | A07 | POST credentials, capture session cookies and CSRF tokens |
+| `crawl_target` | — | BFS crawler: discover endpoints from HTML links and forms |
+
+### Static Analysis
+
+| Tool | OWASP | Description |
+|------|-------|-------------|
+| `analyze_sast_deep` | A03/A06 | Regex SAST with 30+ dangerous patterns + gitleaks secret detection |
+| `scan_dependencies` | A06 | `npm audit` integration: find known vulnerable dependencies |
+
+### Dynamic Testing
+
+| Tool | OWASP | Description |
+|------|-------|-------------|
+| `scan_exposed_endpoints` | A05 | Wordlist scan for admin, Swagger, .env, Actuator paths |
+| `check_security_headers` | A05 | Verify HSTS, CSP, CORS, X-Frame-Options, info-leak headers |
+| `fuzz_api_direct` | A03 | Fuzz with SQL injection (oracle-confirmed) and XSS payloads |
+| `test_cors` | A01 | CORS misconfiguration: evil origin, null origin, suffix bypass |
+| `test_ssti` | A03 | Server-side template injection: probe + math evaluation |
+| `test_path_traversal` | A01 | Path traversal with 11 payloads including double-encoding |
+| `test_bola_idor` | A01 | BOLA/IDOR: cross-user resource access with attacker token |
+| `test_privilege_escalation` | A01 | Vertical privilege escalation via parameter injection |
+| `test_jwt_tampering` | A07 | JWT attacks: alg:none, RS256→HS256, role injection |
+| `test_ssrf` | A10 | SSRF: inject cloud metadata IPs into URL parameters |
+| `inject_llm_jailbreak` | — | LLM guardrail bypass: DAN prompts, XML injection, extraction |
+
+### Orchestration
+
+| Tool | Description |
+|------|-------------|
+| `run_adaptive_pentest` | Autonomous loop: discovers endpoints → selects attacks → repeats |
+| `plan_pentest` | Multi-agent planning: discovery + mission generation |
+| `investigate_area` | Scout: runs targeted attacks and returns danger score (0–10) |
+| `get_report` | Final security report with score and all findings |
+
+## Basic Usage
 
 ```
-/security-judge_goal
+1. ask_target_persona      →  set target URL and persona
+2. login_and_capture       →  authenticate and capture session (if login required)
+3. crawl_target            →  discover endpoints from HTML
+4. scan_exposed_endpoints  →  wordlist scan for exposed paths
+5. analyze_sast_deep       →  SAST + secret detection from source
+6. scan_dependencies       →  npm audit for vulnerable dependencies
+7. check_security_headers  →  verify security response headers
+8. test_cors               →  CORS misconfiguration check
+9. fuzz_api_direct / test_bola_idor / test_ssti / test_path_traversal / ...
+10. get_report             →  score and findings summary
 ```
 
-評価フロー（フェーズ1〜4）が自律的に実行されます。
-修正案の提示には `/security-judge_remedy` を使います。
+### Persona types
 
-## MCPツール一覧
+| Persona | Severity multiplier | Use case |
+|---------|---------------------|----------|
+| `personal` | 0.3× | Personal project, low-stakes |
+| `team` | 0.5× | Internal team service |
+| `internal` | 0.8× | Company-internal system |
+| `commercial` | 1.0× | Customer-facing product |
 
-| ツール | 機能 | OWASP |
-|-------|------|-------|
-| `ask_target_persona` | ペルソナ・URL・ソースパス設定 | — |
-| `analyze_sast_deep` | AST解析 + gitleaks シークレット検知 | A01, A02, C |
-| `fuzz_api_direct` | API直接ファジング（エラー駆動変異器） | A01, A03, A |
-| `test_bola_idor` | 横断的権限昇格（IDOR）テスト | A01, B |
-| `inject_llm_jailbreak` | LLMガードレール突破テスト | D |
-| `test_privilege_escalation` | 縦断的権限昇格テスト | A01, B |
-| `test_jwt_tampering` | JWT改ざん攻撃（alg:none等） | A02 |
-| `scan_exposed_endpoints` | 公開エンドポイントスキャン | A05, C |
-| `test_ssrf` | SSRF脆弱性テスト | A10 |
+## Multi-Agent Pentest
 
-## スコアリング
+Uses Claude Code's native Agent orchestration — no API key needed.
+Claude Code acts as the Opus orchestrator; each `investigate_area` call is a Sonnet scout.
 
-| ペルソナ | 減点係数 | 即時フェイル条件 |
-|---------|---------|----------------|
-| personal | 0.3 | なし |
-| team | 0.5 | なし |
-| internal | 0.8 | カテゴリB・C発火 |
-| commercial | 1.0 | カテゴリA・B・C発火 |
+```
+1. plan_pentest
+   → Returns JSON plan with up to 10 investigation missions
 
-スコア = `max(0, 10 - Σ(基礎減点 × 係数))`
+2. [Claude Code spawns parallel agents, each calling investigate_area]
+   → Each returns findings + dangerScore (0–10)
 
-## 技術スタック
+3. For missions with dangerScore >= 6:
+   → Call investigate_area again with broader scope
 
-- **Node.js 22+ / TypeScript 5.x** (`module: NodeNext`)
-- **@modelcontextprotocol/sdk ^1.29**
-- **undici** — HTTP攻撃クライアント
-- **tree-sitter** — AST解析（動的ロード）
-- **gitleaks** — シークレット検知（bin/ にローカル配置）
-- **p-limit** — 並列数制御
-- **vitest + msw** — テスト・HTTPモック
-
-## 開発
-
-```bash
-npm install         # gitleaks 自動取得
-npm test            # テスト実行
-npm run test:coverage  # カバレッジ確認（80%以上必須）
-npm run build       # TypeScriptビルド
-npm run dev         # 開発モード
+4. get_report
+   → Consolidated report with all findings
 ```
 
+Example prompt to Claude Code:
+
+```
+Run a multi-agent security test on http://localhost:8080.
+Source code is at /path/to/project. Auth token is Bearer eyJ...
+
+Steps:
+1. ask_target_persona (persona=commercial, hasLlmChat=false)
+2. plan_pentest (sourcePath=/path/to/project)
+3. Run each mission from the plan in parallel using the Agent tool
+4. Deep-dive any mission with dangerScore >= 6
+5. get_report
+```
+
+## Adaptive Pentest
+
+Rule-based autonomous loop. No Claude coordination needed.
+
+```
+run_adaptive_pentest (maxRounds=3, authToken=Bearer eyJ...)
+```
+
+- Round 1: Discovery (endpoint scan + OpenAPI + SAST)
+- Round 2+: Identifies attack vectors from discovered endpoints and runs them
+- Stops when no new findings or `maxRounds` reached (max: 5)
+
+## SAST: gitleaks
+
+On first install, `gitleaks` is automatically downloaded for your platform.
+It detects hardcoded secrets (API keys, passwords, tokens) in source code.
+
+Supported: Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64)
+
+## License
+
+MIT

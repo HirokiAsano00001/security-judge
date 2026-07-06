@@ -72,6 +72,48 @@ describe('mutatePaylod', () => {
     const mutated = mutatePaylod({ user: 'a' }, 401, 'unauthorized', 1)
     expect(mutated).toBeDefined()
   })
+
+  it('applies type_coerce: converts number value to string', () => {
+    const mutated = mutatePaylod({ count: 42 }, 400, 'invalid type for count', 1) as Record<string, unknown>
+    expect(typeof mutated.count).toBe('string')
+    expect(mutated.count).toBe('42')
+  })
+
+  it('applies shorten: leaves non-string object values unchanged', () => {
+    const payload = { num: 99, arr: [1, 2], name: 'A'.repeat(5000) }
+    const mutated = mutatePaylod(payload, 400, 'max length exceeded', 1) as Record<string, unknown>
+    expect(mutated.num).toBe(99)
+    expect(mutated.arr).toEqual([1, 2])
+    expect((mutated.name as string).length).toBeLessThanOrEqual(100)
+  })
+
+  it('applies shorten: returns primitive non-string as-is', () => {
+    const mutated = mutatePaylod(42, 400, 'max length exceeded', 1)
+    expect(mutated).toBe(42)
+  })
+
+  it('applies type_coerce: leaves boolean and array values as-is (else branch)', () => {
+    const mutated = mutatePaylod({ flag: true, tags: ['a', 'b'], count: 5 }, 400, 'invalid type for flag', 1) as Record<string, unknown>
+    expect(mutated.flag).toBe(true)
+    expect(mutated.tags).toEqual(['a', 'b'])
+    expect(mutated.count).toBe('5')
+  })
+
+  it('uses encoding strategy when status has no matching rule', () => {
+    const mutated = mutatePaylod({ x: 1 }, 301, 'redirect', 1)
+    expect(mutated).toBeDefined()
+  })
+
+  it('applyFieldFix returns payload when error body has no field name pattern', () => {
+    const payload = { x: 1 }
+    const mutated = mutatePaylod(payload, 422, 'some generic validation error without quoted field', 1)
+    expect(mutated).toEqual(payload)
+  })
+
+  it('applyTypeCoerce returns null payload as-is', () => {
+    const mutated = mutatePaylod(null, 400, 'invalid type for field', 1)
+    expect(mutated).toBeNull()
+  })
 })
 
 describe('buildMutationRounds', () => {

@@ -60,6 +60,9 @@ export interface Finding {
   isFail: boolean
   baseDeduction: number
   toolName: string
+  owaspCategory?: string
+  cweId?: string
+  confidence?: 'HIGH' | 'MEDIUM' | 'LOW'
 }
 
 export interface Remediation {
@@ -91,6 +94,7 @@ export interface JudgeContext {
   findings: Finding[]
   extractedArtifacts: ExtractedArtifact[]
   score: number
+  sessionCookies?: string
 }
 
 export type SupportedLanguage = 'java' | 'python' | 'go' | 'ruby' | 'typescript' | 'javascript'

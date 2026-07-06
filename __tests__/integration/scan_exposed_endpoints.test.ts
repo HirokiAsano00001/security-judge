@@ -47,6 +47,14 @@ afterEach(() => {
 })
 
 describe('scanExposedEndpoints', () => {
+  it('silently returns when url_guard blocks all paths', async () => {
+    const ctx = makeCtx()
+    ctx.allowedUrls = []
+    const result = await scanExposedEndpoints({}, ctx)
+    expect(result).toContain('scan_exposed_endpoints')
+    expect(ctx.findings).toHaveLength(0)
+  })
+
   it('detects exposed actuator/env endpoint', async () => {
     const ctx = makeCtx()
     await scanExposedEndpoints({}, ctx)
@@ -67,5 +75,38 @@ describe('scanExposedEndpoints', () => {
     const result = await scanExposedEndpoints({}, ctx)
     expect(result).toContain('scan_exposed_endpoints')
     expect(result).toContain('Exposed:')
+  })
+})
+
+describe('scanExposedEndpoints - swagger / graphql paths', () => {
+  let mockAgent2: MockAgent
+  let originalDispatcher2: Dispatcher
+
+  beforeEach(() => {
+    originalDispatcher2 = getGlobalDispatcher()
+    mockAgent2 = new MockAgent()
+    mockAgent2.disableNetConnect()
+    setGlobalDispatcher(mockAgent2)
+
+    const pool = mockAgent2.get('http://test.example.com')
+    // swagger-ui returns JSON with "swagger" keyword → sensitive content → HIGH finding
+    pool.intercept({ path: '/swagger-ui.html', method: 'GET' }).reply(200,
+      '{"swagger":"2.0","info":{"title":"Test API"},"paths":{}}',
+      { headers: { 'content-type': 'application/json' } }
+    )
+    pool.intercept({ path: /.*/, method: 'GET' }).reply(404, '').persist()
+  })
+
+  afterEach(() => {
+    setGlobalDispatcher(originalDispatcher2)
+  })
+
+  it('creates HIGH severity finding with category A for swagger-ui', async () => {
+    const ctx = makeCtx()
+    await scanExposedEndpoints({}, ctx)
+    const swaggerFinding = ctx.findings.find(f => f.description.includes('swagger-ui'))
+    expect(swaggerFinding).toBeDefined()
+    expect(swaggerFinding?.severity).toBe('HIGH')
+    expect(swaggerFinding?.category).toBe('A')
   })
 })

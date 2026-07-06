@@ -39,6 +39,16 @@ afterEach(() => {
 })
 
 describe('injectLlmJailbreak', () => {
+  it('handles request-level network error gracefully', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/chat-error', method: 'POST' }).replyWithError('ECONNRESET').persist()
+
+    const ctx = makeCtx()
+    const result = await injectLlmJailbreak({ chatEndpoint: '/api/chat-error' }, ctx)
+    expect(result).toBeDefined()
+    expect(result).toContain('inject_llm_jailbreak')
+  })
+
   it('detects system prompt leak', async () => {
     const ctx = makeCtx()
     await injectLlmJailbreak({ chatEndpoint: '/api/chat' }, ctx)
@@ -56,6 +66,12 @@ describe('injectLlmJailbreak', () => {
   it('returns summary string', async () => {
     const ctx = makeCtx()
     const result = await injectLlmJailbreak({ chatEndpoint: '/api/chat' }, ctx)
+    expect(result).toContain('inject_llm_jailbreak')
+  })
+
+  it('sets Authorization header when token is provided', async () => {
+    const ctx = makeCtx()
+    const result = await injectLlmJailbreak({ chatEndpoint: '/api/chat', token: 'bearer-token-xyz' }, ctx)
     expect(result).toContain('inject_llm_jailbreak')
   })
 })

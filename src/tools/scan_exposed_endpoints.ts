@@ -22,7 +22,37 @@ const WORDLIST = [
   '/graphql', '/graphiql',
   '/robots.txt', '/sitemap.xml',
   '/.git/config', '/.git/HEAD',
+  '/metrics', '/health', '/ready', '/live',
+  '/trace', '/env', '/loggers', '/configprops',
 ]
+
+const SENSITIVE_BODY_PATTERNS = [
+  /password/i,
+  /secret/i,
+  /api[_-]?key/i,
+  /access[_-]?token/i,
+  /database[_-]?url/i,
+  /\broot\b/,
+  /"mappings"\s*:/,
+  /"beans"\s*:/,
+  /swagger/i,
+  /"openapi"\s*:/,
+  /\benv\b.*=.*\S/,
+]
+
+function isSoftNotFound(body: string, contentType: string): boolean {
+  const ct = contentType.toLowerCase()
+  if (!ct.includes('text/html')) return false
+  const lower = body.toLowerCase()
+  return lower.includes('<!doctype html') || lower.includes('<html')
+}
+
+function hasSensitiveContent(body: string, path: string): boolean {
+  if (path === '/robots.txt' || path === '/sitemap.xml' || path === '/health' || path === '/ready' || path === '/live') {
+    return false
+  }
+  return SENSITIVE_BODY_PATTERNS.some(p => p.test(body))
+}
 
 export async function scanExposedEndpoints(
   _input: Record<never, never>,
@@ -44,11 +74,21 @@ export async function scanExposedEndpoints(
         })
 
         const body = await res.body.text()
+        const contentType = (res.headers['content-type'] as string | undefined) ?? ''
         results.push(`${path}: ${res.statusCode}`)
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
+          if (isSoftNotFound(body, contentType)) {
+            results.push(`${path}: 200 (SPA soft-404, skipped)`)
+            return
+          }
+
+          if (!hasSensitiveContent(body, path) && !isHighRiskPath(path)) {
+            return
+          }
+
           const severity = isHighRiskPath(path) ? 'CRITICAL' : 'HIGH'
-          const category = path.includes('actuator') || path.includes('.env') ? 'C' : 'A'
+          const category = path.includes('actuator') || path.includes('.env') || path.includes('.git') ? 'C' : 'A'
 
           findings.push({
             severity,
@@ -58,6 +98,9 @@ export async function scanExposedEndpoints(
             isFail: isHighRiskPath(path),
             baseDeduction: 10,
             toolName: 'scan_exposed_endpoints',
+            owaspCategory: 'A05:2021',
+            cweId: 'CWE-200',
+            confidence: 'HIGH',
           })
         }
       } catch (err) {
@@ -71,6 +114,6 @@ export async function scanExposedEndpoints(
 }
 
 function isHighRiskPath(path: string): boolean {
-  const HIGH_RISK = ['.env', 'actuator/env', 'actuator/beans', '.git/', 'h2-console', 'admin']
+  const HIGH_RISK = ['.env', 'actuator/env', 'actuator/beans', '.git/', 'h2-console', 'admin', 'config']
   return HIGH_RISK.some(r => path.includes(r))
 }

@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { isPrivateOrMetadataUrl, assertAllowedUrl, extractBaseUrl } from '../../src/safety/url_guard.js'
 
 describe('isPrivateOrMetadataUrl', () => {
+  it('returns true for invalid URL string', () => {
+    expect(isPrivateOrMetadataUrl('not-a-valid-url')).toBe(true)
+  })
+
   it('blocks 10.x.x.x', () => {
     expect(isPrivateOrMetadataUrl('http://10.0.0.1/test')).toBe(true)
   })

@@ -43,7 +43,28 @@ afterEach(() => {
 })
 
 describe('testBolaIdor', () => {
-  it('detects IDOR on /api/users/1', async () => {
+  it('skips paths without numeric or UUID IDs', async () => {
+    const ctx = makeCtx()
+    const result = await testBolaIdor({
+      attackerToken: 'attacker-token',
+      resourcePaths: ['/api/users', '/api/products/search', '/api/health'],
+    }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+    expect(result).toContain('test_bola_idor')
+  })
+
+  it('continues silently when url_guard blocks a path', async () => {
+    const ctx = makeCtx()
+    ctx.allowedUrls = []
+    const result = await testBolaIdor({
+      attackerToken: 'attacker-token',
+      resourcePaths: ['/api/users/1'],
+    }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+    expect(result).toContain('test_bola_idor')
+  })
+
+  it('detects IDOR on /api/users/1 (HIGH without victimToken, CRITICAL with victimToken)', async () => {
     const ctx = makeCtx()
     await testBolaIdor({
       attackerToken: 'attacker-token',
@@ -51,7 +72,8 @@ describe('testBolaIdor', () => {
     }, ctx)
     const idorFinding = ctx.findings.find(f => f.category === 'B')
     expect(idorFinding).toBeDefined()
-    expect(idorFinding?.severity).toBe('CRITICAL')
+    // Without victimToken, finding is HIGH (unconfirmed IDOR)
+    expect(idorFinding?.severity).toBe('HIGH')
   })
 
   it('returns summary string', async () => {

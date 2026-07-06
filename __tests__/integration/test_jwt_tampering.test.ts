@@ -55,6 +55,24 @@ describe('testJwtTampering', () => {
     expect(result).toContain('test_jwt_tampering')
   })
 
+  it('handles request-level network error gracefully', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/broken-endpoint', method: 'GET' }).replyWithError('ECONNRESET').persist()
+
+    const ctx = makeCtx()
+    const result = await testJwtTampering({ token: SAMPLE_TOKEN, endpoint: '/api/broken-endpoint' }, ctx)
+    expect(result).toBeDefined()
+    expect(result).toContain('test_jwt_tampering')
+  })
+
+  it('handles 3-part token with non-JSON parts (catch branches in token builders)', async () => {
+    const ctx = makeCtx()
+    // 'abc.def.ghi' → 3 parts, base64url-decoded parts are not valid JSON → catch → return null
+    // Only 'no token' attack runs (token='')
+    const result = await testJwtTampering({ token: 'abc.def.ghi', endpoint: '/api/admin' }, ctx)
+    expect(result).toContain('test_jwt_tampering')
+  })
+
   it('handles invalid token (not 3 parts) — null attacks are skipped, only no-token runs', async () => {
     const ctx = makeCtx()
     const result = await testJwtTampering({ token: 'invalid-token-no-dots', endpoint: '/api/admin' }, ctx)

@@ -31,6 +31,15 @@ const ALT_ID_VARIANTS = [
   () => 'admin',
 ]
 
+function jaccardSimilarity(a: string, b: string): number {
+  const setA = new Set(a.split(/\s+/).filter(Boolean))
+  const setB = new Set(b.split(/\s+/).filter(Boolean))
+  if (setA.size === 0 && setB.size === 0) return 1
+  const intersection = [...setA].filter(x => setB.has(x)).length
+  const union = new Set([...setA, ...setB]).size
+  return union === 0 ? 1 : intersection / union
+}
+
 export async function testBolaIdor(
   input: {
     victimToken?: string
@@ -48,8 +57,28 @@ export async function testBolaIdor(
 
     const originalId = idMatch[1]
 
+    let victimBody: string | null = null
+    if (input.victimToken) {
+      const victimUrl = `${ctx.targetBaseUrl}${path}`
+      try {
+        assertAllowedUrl(victimUrl, ctx.allowedUrls)
+        const victimRes = await request(victimUrl, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${input.victimToken}`, 'Content-Type': 'application/json' },
+        })
+        if (victimRes.statusCode >= 200 && victimRes.statusCode < 300) {
+          victimBody = await victimRes.body.text()
+        } else {
+          await victimRes.body.text()
+        }
+      } catch {
+        // victim token check failed — continue with attacker-only test
+      }
+    }
+
     for (const variant of ALT_ID_VARIANTS) {
       const altId = variant(originalId)
+      if (altId === originalId) continue
       const altPath = path.replace(originalId, altId)
       const url = `${ctx.targetBaseUrl}${altPath}`
 
@@ -68,14 +97,21 @@ export async function testBolaIdor(
         results.push(`GET ${altPath}: ${res.statusCode}`)
 
         if (res.statusCode >= 200 && res.statusCode < 300 && body.length > 10) {
+          const hasVictimConfirmation = victimBody !== null && jaccardSimilarity(body, victimBody) > 0.3
+
           const finding: Finding = {
-            severity: 'CRITICAL',
+            severity: hasVictimConfirmation ? 'CRITICAL' : 'HIGH',
             category: 'B',
-            description: `BOLA/IDOR: Attacker accessed resource ${altPath} belonging to another user`,
+            description: hasVictimConfirmation
+              ? `BOLA/IDOR confirmed: Attacker accessed victim's resource at ${altPath}`
+              : `Possible BOLA/IDOR (unconfirmed): Attacker accessed ${altPath} — provide victimToken to confirm`,
             evidence: `curl -X GET '${url}' -H 'Authorization: Bearer ${input.attackerToken}'\nResponse (${res.statusCode}): ${body.slice(0, 500)}`,
-            isFail: true,
+            isFail: hasVictimConfirmation,
             baseDeduction: 10,
             toolName: 'test_bola_idor',
+            owaspCategory: 'A01:2021',
+            cweId: 'CWE-639',
+            confidence: hasVictimConfirmation ? 'HIGH' : 'MEDIUM',
           }
           findings.push(finding)
         }

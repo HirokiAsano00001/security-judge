@@ -1,0 +1,12 @@
+__tests__/
+src/
+bin/
+scripts/hooks/
+.pgdd/
+.claude/
+*.test.ts
+tsconfig.json
+vitest.config.ts
+RDD.md
+AGENT.md
+.gitignore
