@@ -132,13 +132,10 @@ describe('Per-vulnerability detection matrix (vuln-lab)', () => {
   it('scan_dependencies finds the vulnerable lodash dependency', async () => {
     const ctx = makeCtx()
     const result = await scanDependencies({ sourcePath: target.sourcePath }, ctx)
-    const detected = ctx.findings.some((f: Finding) => f.toolName === 'scan_dependencies')
-    if (!detected) {
-      // npm audit needs network access to the advisory DB; tolerate an offline runner
-      // but never tolerate a genuine miss when audit actually ran.
-      expect(result).toMatch(/npm not found|no lock file|npm audit failed|0 vulnerabilities/i)
-      return
-    }
-    expect(detected).toBe(true)
+    // Hard assertion — no silent-pass path. npm audit runs against the local lockfile
+    // and detects lodash@4.17.4's known advisories. (Requires network to the advisory DB.)
+    const finding = ctx.findings.find((f: Finding) => f.toolName === 'scan_dependencies')
+    expect(finding, `scan_dependencies produced no finding. Tool output:\n${result}`).toBeDefined()
+    expect(/lodash/i.test(finding!.description)).toBe(true)
   })
 })
