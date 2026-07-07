@@ -8,6 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const APP_DIRS = {
   vulnerable: resolve(__dirname, '../../../test/target-app'),
   secure: resolve(__dirname, '../../../test/secure-app'),
+  lab: resolve(__dirname, '../../../test/vuln-lab'),
 } as const
 
 export type AppKind = keyof typeof APP_DIRS
@@ -39,9 +40,10 @@ async function waitForReady(baseUrl: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const res = await request(`${baseUrl}/health`, { method: 'GET' })
+      // Any HTTP response (even 404) means the server is listening and ready.
+      const res = await request(`${baseUrl}/`, { method: 'GET' })
       await res.body.text()
-      if (res.statusCode === 200) return
+      return
     } catch {
       // not up yet
     }

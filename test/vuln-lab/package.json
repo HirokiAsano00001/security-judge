@@ -1,0 +1,13 @@
+{
+  "name": "security-judge-vuln-lab",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Per-vulnerability lab app for the E2E detection matrix",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "4.17.4"
+  }
+}
