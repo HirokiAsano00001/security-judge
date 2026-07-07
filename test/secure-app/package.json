@@ -1,0 +1,12 @@
+{
+  "name": "security-judge-secure-app",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Hardened counterpart of target-app for E2E specificity testing",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.2"
+  }
+}

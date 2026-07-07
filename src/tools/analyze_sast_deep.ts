@@ -104,6 +104,17 @@ interface DangerPattern {
 }
 
 const DANGEROUS_PATTERNS: DangerPattern[] = [
+  // Hardcoded secrets (regex fallback — complements gitleaks, which may be absent).
+  // Value must be >=12 non-space chars and NOT an obvious placeholder, to limit
+  // false positives on example/config docs.
+  { regex: /(?:api[_-]?key|apikey|secret|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\s*[:=]\s*["'](?!(?:your[-_ ]|xxx|changeme|placeholder|example[-_ ]|\$\{|<|todo|none|null|test-key|dummy)\b)[^"'\s]{12,}["']/i, desc: 'Hardcoded secret / API key assigned to a string literal — move to env or a secret manager', severity: 'CRITICAL', category: 'C', owaspCategory: 'A02:2021', cweId: 'CWE-798' },
+  { regex: /["'](?:sk|pk|ghp|gho|xox[baprs]|AKIA)[-_][A-Za-z0-9]{8,}["']/, desc: 'Hardcoded provider-prefixed secret token in source', severity: 'CRITICAL', category: 'C', owaspCategory: 'A02:2021', cweId: 'CWE-798' },
+
+  // Mass assignment — user-controlled body merged into a domain object without an allow-list.
+  // Scoped to the Object.assign(target, req.body) sink (precise); ORM .update(req.body)
+  // is intentionally NOT flagged here to avoid false positives on legitimate DAL usage.
+  { regex: /Object\.assign\s*\([^,)]+,\s*req\.(body|query|params)/, desc: 'Mass assignment: Object.assign merges user-controlled req.body into an object — unrestricted field write (e.g. role/isAdmin)', severity: 'HIGH', category: 'A', owaspCategory: 'A08:2021', cweId: 'CWE-915' },
+
   { regex: /\beval\s*\(/g, desc: 'eval() usage — arbitrary code execution risk', severity: 'HIGH', category: 'A', owaspCategory: 'A03:2021', cweId: 'CWE-95' },
   { regex: /exec\s*\(\s*[`$]/, desc: 'Shell exec with string interpolation — command injection risk', severity: 'HIGH', category: 'A', owaspCategory: 'A03:2021', cweId: 'CWE-78' },
   { regex: /ProcessBuilder|Runtime\.getRuntime\(\)\.exec/, desc: 'Java shell exec — command injection risk', severity: 'HIGH', category: 'A', owaspCategory: 'A03:2021', cweId: 'CWE-78' },

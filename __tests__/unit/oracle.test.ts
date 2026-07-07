@@ -62,6 +62,13 @@ describe('checkStackTraceSignatures', () => {
     expect(result.isVulnerable).toBe(true)
   })
 
+  it('detects a Node/Express arrow-frame stack trace leaked in JSON', () => {
+    const body = '{"error":"Expected string email, got object","stack":"Error: Expected string email, got object\\n    at /app/server.js:88:33\\n    at Layer.handle (/app/node_modules/express/lib/router/layer.js:95:5)"}'
+    const result = checkStackTraceSignatures(body)
+    expect(result.isVulnerable).toBe(true)
+    expect(result.confidence).toBe('HIGH')
+  })
+
   it('returns not vulnerable for generic 500 message', () => {
     const result = checkStackTraceSignatures('{"error":"Internal Server Error"}')
     expect(result.isVulnerable).toBe(false)

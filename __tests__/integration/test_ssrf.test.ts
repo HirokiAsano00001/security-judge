@@ -80,6 +80,44 @@ describe('testSsrf', () => {
     expect(result).toBeDefined()
   })
 
+  it('flags SSRF when the server surfaces a connection error to the injected host', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/attempted', method: 'POST' }).reply(500,
+      JSON.stringify({ error: 'connect ECONNREFUSED 169.254.169.254:80' }),
+      { headers: { 'content-type': 'application/json' } }
+    ).persist()
+
+    const ctx = makeCtx('commercial')
+    await testSsrf({ endpoint: '/api/attempted', urlParam: 'url' }, ctx)
+    const finding = ctx.findings.find(f => f.description.includes('attempted an outbound'))
+    expect(finding).toBeDefined()
+    expect(finding?.confidence).toBe('MEDIUM')
+  })
+
+  it('does NOT false-positive when the app rejects the URL with a plain 400 (no network error)', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/guarded', method: 'POST' }).reply(400,
+      JSON.stringify({ error: 'url not allowed' }),
+      { headers: { 'content-type': 'application/json' } }
+    ).persist()
+
+    const ctx = makeCtx('commercial')
+    await testSsrf({ endpoint: '/api/guarded', urlParam: 'url' }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+  })
+
+  it('does NOT false-positive on a bare 500 with no connection-error signature', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    pool.intercept({ path: '/api/err500', method: 'POST' }).reply(500,
+      JSON.stringify({ error: 'internal server error' }),
+      { headers: { 'content-type': 'application/json' } }
+    ).persist()
+
+    const ctx = makeCtx('commercial')
+    await testSsrf({ endpoint: '/api/err500', urlParam: 'url' }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+  })
+
   it('handles network error during SSRF probe gracefully', async () => {
     const pool = mockAgent.get('http://test.example.com')
     pool.intercept({ path: '/api/netfail', method: 'POST' }).replyWithError('ECONNRESET')

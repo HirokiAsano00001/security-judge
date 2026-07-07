@@ -109,16 +109,21 @@ app.post('/api/fetch', (req, res) => {
       method: 'GET',
     }
 
+    // Guard against double-response (timeout + error/end both firing) so the
+    // server does not crash mid-scan. Does NOT alter the SSRF vulnerability:
+    // arbitrary URLs are still fetched server-side and their bodies returned.
+    const respond = (fn) => { if (!res.headersSent) fn() }
+
     const proxyReq = httpRequest(options, (proxyRes) => {
       let data = ''
       proxyRes.on('data', chunk => data += chunk)
-      proxyRes.on('end', () => res.json({ status: proxyRes.statusCode, body: data }))
+      proxyRes.on('end', () => respond(() => res.json({ status: proxyRes.statusCode, body: data })))
     })
 
-    proxyReq.on('error', err => res.status(500).json({ error: err.message }))
+    proxyReq.on('error', err => respond(() => res.status(500).json({ error: err.message })))
     proxyReq.setTimeout(3000, () => {
       proxyReq.destroy()
-      res.status(408).json({ error: 'timeout' })
+      respond(() => res.status(408).json({ error: 'timeout' }))
     })
     proxyReq.end()
   } catch (err) {

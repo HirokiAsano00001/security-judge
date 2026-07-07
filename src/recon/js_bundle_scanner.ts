@@ -1,5 +1,6 @@
 import { request } from 'undici'
 import { type EndpointInfo } from '../types/index.js'
+import { assertAllowedUrl, extractBaseUrl } from '../safety/url_guard.js'
 
 const SCRIPT_SRC_REGEX = /<script[^>]+src=["']([^"']+\.js)["']/gi
 const API_URL_REGEX = /['"`](\/api\/[^'"`\s]+)['"`]/g
@@ -8,6 +9,7 @@ const AXIOS_REGEX = /axios\.(?:get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)[
 
 export async function scanJsBundle(baseUrl: string): Promise<EndpointInfo[]> {
   const endpoints: EndpointInfo[] = []
+  const origin = extractBaseUrl(baseUrl)
 
   try {
     const { body, statusCode } = await request(`${baseUrl}/`, { method: 'GET' })
@@ -26,6 +28,10 @@ export async function scanJsBundle(baseUrl: string): Promise<EndpointInfo[]> {
     await Promise.allSettled(
       scriptUrls.slice(0, 5).map(async url => {
         try {
+          // Only fetch first-party bundles. A hostile target page could reference
+          // `<script src="http://169.254.169.254/...">`; without this guard security-judge
+          // would fetch it and become an SSRF pivot. Same-origin only.
+          assertAllowedUrl(url, [origin])
           const { body: jsBody, statusCode: jsStatus } = await request(url, { method: 'GET' })
           if (jsStatus !== 200) return
 

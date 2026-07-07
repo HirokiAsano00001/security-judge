@@ -48,6 +48,14 @@ export async function testSsrf(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (input.token) headers['Authorization'] = `Bearer ${input.token}`
 
+  // Classify each payload into the strongest evidence tier it produced, then emit a
+  // SINGLE finding per endpoint (the endpoint has one SSRF flaw — the payloads are
+  // interchangeable exploits of it, not separate vulnerabilities).
+  interface Hit { desc: string; url: string; snippet: string }
+  const metadataHits: Hit[] = []
+  const proxiedHits: Hit[] = []
+  const attemptedHits: Hit[] = []
+
   for (const payload of SSRF_PAYLOADS) {
     try {
       const body = JSON.stringify({ [input.urlParam]: payload.url })
@@ -62,31 +70,66 @@ export async function testSsrf(
       results.push(`[${payload.desc}]: ${res.statusCode}`)
 
       const hasMetadataLeak = /ami-id|instance-id|security-credentials|computeMetadata/i.test(responseBody)
+      // The server tried to reach the injected internal host: a *network-level* error
+      // surfaced in the response proves the app performed the outbound connection
+      // instead of refusing it — i.e. no SSRF egress filtering. A bare 5xx status is
+      // NOT sufficient (LB/rate-limit/unrelated crash also produce it); we require an
+      // explicit connection-failure signature echoed from the server-side fetch.
+      const attemptedOutbound =
+        /ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|getaddrinfo|ECONNRESET|socket hang up|connection refused|network unreachable|\btimed?\s?out\b|\btimeout\b/i.test(responseBody)
 
-      if (res.statusCode >= 200 && res.statusCode < 300 && hasMetadataLeak) {
-        findings.push({
-          severity: 'CRITICAL',
-          category: 'C',
-          description: `SSRF confirmed: ${payload.desc} — response contains cloud metadata`,
-          evidence: `curl -X POST '${targetUrl}' -d '{"${input.urlParam}": "${payload.url}"}'\nResponse: ${responseBody.slice(0, 500)}`,
-          isFail: true,
-          baseDeduction: 10,
-          toolName: 'test_ssrf',
-        })
-      } else if (res.statusCode >= 200 && res.statusCode < 300) {
-        findings.push({
-          severity: 'HIGH',
-          category: 'C',
-          description: `Possible SSRF: ${payload.desc} — server made outbound request (no metadata in response)`,
-          evidence: `curl -X POST '${targetUrl}' -d '{"${input.urlParam}": "${payload.url}"}'\nResponse: ${responseBody.slice(0, 300)}`,
-          isFail: false,
-          baseDeduction: 10,
-          toolName: 'test_ssrf',
-        })
-      }
+      const is2xx = res.statusCode >= 200 && res.statusCode < 300
+      const hit: Hit = { desc: payload.desc, url: payload.url, snippet: responseBody.slice(0, 300) }
+      if (is2xx && hasMetadataLeak) metadataHits.push(hit)
+      else if (is2xx) proxiedHits.push(hit)
+      else if (attemptedOutbound) attemptedHits.push(hit)
     } catch (err) {
       results.push(`[${payload.desc}]: ERROR`)
     }
+  }
+
+  const curl = (h: Hit) => `curl -X POST '${targetUrl}' -d '{"${input.urlParam}": "${h.url}"}'`
+  const listVectors = (hits: Hit[]) => hits.map(h => h.desc).join(', ')
+
+  if (metadataHits.length > 0) {
+    findings.push({
+      severity: 'CRITICAL',
+      category: 'C',
+      description: `SSRF confirmed on ${input.endpoint} — response contains cloud metadata (${metadataHits.length} vector(s): ${listVectors(metadataHits)})`,
+      evidence: `${curl(metadataHits[0])}\nResponse: ${metadataHits[0].snippet}`,
+      isFail: true,
+      baseDeduction: 10,
+      toolName: 'test_ssrf',
+      owaspCategory: 'A10:2021',
+      cweId: 'CWE-918',
+      confidence: 'HIGH',
+    })
+  } else if (proxiedHits.length > 0) {
+    findings.push({
+      severity: 'HIGH',
+      category: 'C',
+      description: `Possible SSRF on ${input.endpoint} — server fetched the attacker-supplied internal URL and returned its response (${proxiedHits.length} vector(s): ${listVectors(proxiedHits)})`,
+      evidence: `${curl(proxiedHits[0])}\nResponse: ${proxiedHits[0].snippet}`,
+      isFail: false,
+      baseDeduction: 10,
+      toolName: 'test_ssrf',
+      owaspCategory: 'A10:2021',
+      cweId: 'CWE-918',
+      confidence: 'HIGH',
+    })
+  } else if (attemptedHits.length > 0) {
+    findings.push({
+      severity: 'HIGH',
+      category: 'C',
+      description: `Possible SSRF on ${input.endpoint} — server attempted an outbound connection to the injected internal host, no egress filtering (${attemptedHits.length} vector(s): ${listVectors(attemptedHits)})`,
+      evidence: `${curl(attemptedHits[0])}\nResponse: ${attemptedHits[0].snippet}`,
+      isFail: false,
+      baseDeduction: 10,
+      toolName: 'test_ssrf',
+      owaspCategory: 'A10:2021',
+      cweId: 'CWE-918',
+      confidence: 'MEDIUM',
+    })
   }
 
   ctx.findings.push(...findings)

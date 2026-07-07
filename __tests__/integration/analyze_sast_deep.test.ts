@@ -39,4 +39,22 @@ describe('analyzeSastDeep', () => {
     const result = await analyzeSastDeep({ sourcePath: '/non/existent/path' }, ctx)
     expect(typeof result).toBe('string')
   })
+
+  it('detects hardcoded secrets (CWE-798) in the vuln fixtures', async () => {
+    const ctx = makeCtx()
+    await analyzeSastDeep({ sourcePath: join(FIXTURES_DIR, 'vuln') }, ctx)
+    expect(ctx.findings.some(f => f.cweId === 'CWE-798')).toBe(true)
+  })
+
+  it('detects mass assignment (CWE-915) in the vuln fixtures', async () => {
+    const ctx = makeCtx()
+    await analyzeSastDeep({ sourcePath: join(FIXTURES_DIR, 'vuln') }, ctx)
+    expect(ctx.findings.some(f => f.cweId === 'CWE-915')).toBe(true)
+  })
+
+  it('does NOT flag hardcoded-secret / mass-assignment on safe fixtures (specificity)', async () => {
+    const ctx = makeCtx()
+    await analyzeSastDeep({ sourcePath: join(FIXTURES_DIR, 'safe') }, ctx)
+    expect(ctx.findings.some(f => f.cweId === 'CWE-798' || f.cweId === 'CWE-915')).toBe(false)
+  })
 })

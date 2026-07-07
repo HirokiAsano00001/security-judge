@@ -38,6 +38,11 @@ const STACK_TRACE_SIGNATURES: RegExp[] = [
   /at\s+[\w$.]+\([\w/.:]+\.java:\d+\)/,
   /Traceback \(most recent call last\):/,
   /at\s+Object\.<anonymous>\s+\([^)]+\.js:\d+:\d+\)/,
+  // General Node/JS stack frame — an arrow/anonymous handler leaks as `at <path>.js:line:col`
+  // (with or without a wrapping "(...)"), which the Object.<anonymous>-only pattern missed.
+  /\bat\s+[^\s"]*\.(?:js|ts|jsx|tsx|mjs|cjs):\d+:\d+/,
+  // Express/Node returning the raw Error.stack in a JSON field.
+  /"stack"\s*:\s*"(?:Error|TypeError|ReferenceError|RangeError|SyntaxError)[: ]/i,
   /panic: runtime error/,
   /goroutine \d+ \[running\]/,
   /SystemError:/,
