@@ -46,7 +46,7 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 
 | Tool | OWASP | Description |
 |------|-------|-------------|
-| `analyze_sast_deep` | A03/A06 | Regex SAST with 30+ dangerous patterns + gitleaks secret detection |
+| `analyze_sast_deep` | A02/A03/A08 | Regex SAST (30+ dangerous patterns) + hardcoded-secret and mass-assignment (`Object.assign(x, req.body)`) detection. gitleaks is used when present; a regex fallback still catches hardcoded secrets without it. |
 | `scan_dependencies` | A06 | `npm audit` integration: find known vulnerable dependencies |
 
 ### Dynamic Testing
@@ -62,8 +62,8 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 | `test_bola_idor` | A01 | BOLA/IDOR: cross-user resource access with attacker token |
 | `test_privilege_escalation` | A01 | Vertical privilege escalation via parameter injection |
 | `test_jwt_tampering` | A07 | JWT attacks: alg:none, RS256→HS256, role injection |
-| `test_ssrf` | A10 | SSRF: inject cloud metadata IPs into URL parameters |
-| `inject_llm_jailbreak` | — | LLM guardrail bypass: DAN prompts, XML injection, extraction |
+| `test_ssrf` | A10 | SSRF: inject cloud-metadata/internal IPs. Confirms via metadata leakage **or** a server-side connection attempt (missing egress filter). |
+| `inject_llm_jailbreak` | LLM01 | LLM guardrail bypass: DAN prompts, XML injection, system-prompt extraction. Strips echoed payloads to avoid parroting false positives. |
 
 ### Orchestration
 
@@ -147,8 +147,44 @@ run_adaptive_pentest (maxRounds=3, authToken=Bearer eyJ...)
 
 On first install, `gitleaks` is automatically downloaded for your platform.
 It detects hardcoded secrets (API keys, passwords, tokens) in source code.
+Even without gitleaks, a regex fallback still flags hardcoded secrets.
 
 Supported: Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64)
+
+## Safety & threat model
+
+security-judge is a **local CLI tool**: the operator running it is the owner of
+the target being tested. Its outbound requests are gated by `url_guard`:
+
+- **Only the designated target is reachable.** Requests are allowed only when the
+  URL's `protocol://host:port` exactly matches the target set via `ask_target_persona`
+  (parsed match — not string prefix — so `http://127.0.0.1:3000@evil/` and
+  `http://target.evil.com/` are blocked).
+- **Local / private targets are supported.** `127.0.0.1`, `192.168.x`, `10.x`, etc.
+  are testable when they are the designated target (intended use: local/internal apps).
+- **Cloud-metadata endpoints are permanently blocked** (169.254.169.254 and friends),
+  even if named as the target, so the tool can never be turned into an SSRF pivot.
+  Obfuscated forms (decimal/hex/octal/IPv4-in-IPv6) are normalized before the check.
+
+> SSRF *payloads* (metadata IPs sent as request-body values to the target) are data
+> for the target to mishandle — they never become requests that security-judge itself sends.
+
+## Testing
+
+```bash
+npm test           # unit + integration (mock-based)
+npm run test:e2e   # end-to-end against spawned Express apps
+npm run test:coverage
+```
+
+The E2E suite spawns real apps and measures detection, not just mocks:
+
+- **Sensitivity** — a deliberately vulnerable app (`test/target-app`) must be fully
+  detected (score 100/100).
+- **Specificity** — a hardened twin (`test/secure-app`) must trigger no detections
+  (0/100), so a "flag-everything" regression is caught.
+- **Per-tool matrix** — `test/vuln-lab` exposes one vulnerable endpoint per tool;
+  each detection tool is asserted to fire on a live target (`vuln-matrix.e2e.test.ts`).
 
 ## License
 
