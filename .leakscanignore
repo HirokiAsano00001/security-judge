@@ -1,0 +1,25 @@
+# leak-scan ignore list
+# security-judge はセキュリティテストツールのため、脆弱性検出用の
+# 意図的なダミー秘密情報・SSRFバイパステストベクタを含む。
+# パターン全体ではなくフィクスチャの該当パス/行のみを個別に除外する
+# （本番コードへ本物のキーが混入した場合は引き続き検出させるため）。
+# 判定根拠: leak-check エージェント（全12項目 OK / 実クレデンシャル0件）
+
+# --- 意図的な脆弱コードフィクスチャ（ダミーAPIキー） ---
+__tests__/fixtures/vuln/hardcoded_secret.java
+__tests__/fixtures/vuln/hardcoded_secret.ts
+
+# --- 意図的に脆弱なテスト対象アプリ（ダミーキー / ジョークDB接続文字列） ---
+test/target-app/server.js
+test/vuln-lab/server.js
+
+# --- SSRF userinfo バイパスを「ブロックする」ことを検証するテストベクタ ---
+__tests__/e2e/detection.e2e.test.ts
+__tests__/unit/url_guard.test.ts
+
+# --- 脅威モデル / 設計ドキュメント内のバイパス例示（実クレデンシャルなし） ---
+README.md
+design/url-guard-redesign.md
+
+# --- JWT 改ざん検証用の jwt.io 公式デモトークン ---
+__tests__/integration/test_jwt_tampering.test.ts
