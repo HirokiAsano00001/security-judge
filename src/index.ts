@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { type JudgeContext } from './types/index.js'
 import { askTargetPersona, ASK_TARGET_PERSONA_SCHEMA } from './tools/ask_target_persona.js'
 import { analyzeSastDeep, ANALYZE_SAST_DEEP_SCHEMA } from './tools/analyze_sast_deep.js'
+import { analyzeSastSemgrep } from './tools/analyze_sast_semgrep.js'
 import { fuzzApiDirect, FUZZ_API_DIRECT_SCHEMA } from './tools/fuzz_api_direct.js'
 import { testBolaIdor, TEST_BOLA_IDOR_SCHEMA } from './tools/test_bola_idor.js'
 import { testPrivilegeEscalation, TEST_PRIVILEGE_ESCALATION_SCHEMA } from './tools/test_privilege_escalation.js'
@@ -63,6 +64,20 @@ server.tool(
   },
   async (input) => {
     const result = await analyzeSastDeep(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'analyze_sast_semgrep',
+  'Deep SAST via Semgrep: taint / data-flow analysis (tracks user input from source to a dangerous sink) plus thousands of registry rules across languages. Complements analyze_sast_deep — taint-confirmed source→sink flows are reported as CRITICAL. Uses a native `semgrep` install or the Docker image; skips gracefully if neither is present.',
+  {
+    sourcePath: z.string(),
+    config: z.string().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+  },
+  async (input) => {
+    const result = await analyzeSastSemgrep(input, ctx)
     return { content: [{ type: 'text', text: result }] }
   }
 )

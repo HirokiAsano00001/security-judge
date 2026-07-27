@@ -47,6 +47,7 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 | Tool | OWASP | Description |
 |------|-------|-------------|
 | `analyze_sast_deep` | A02/A03/A08 | Regex SAST (30+ dangerous patterns) + hardcoded-secret and mass-assignment (`Object.assign(x, req.body)`) detection. gitleaks is used when present; a regex fallback still catches hardcoded secrets without it. |
+| `analyze_sast_semgrep` | A01–A08 | Semgrep-backed deep SAST: thousands of registry rules across languages, with taint / data-flow tracking (source → sink). Runs via a native `semgrep` install or the `semgrep/semgrep` Docker image; skips gracefully if neither is present. CWE/OWASP are read from Semgrep rule metadata. |
 | `scan_dependencies` | A06 | `npm audit` integration: find known vulnerable dependencies |
 
 ### Dynamic Testing
@@ -81,7 +82,8 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 2. login_and_capture       →  authenticate and capture session (if login required)
 3. crawl_target            →  discover endpoints from HTML
 4. scan_exposed_endpoints  →  wordlist scan for exposed paths
-5. analyze_sast_deep       →  SAST + secret detection from source
+5. analyze_sast_deep       →  regex SAST + secret detection from source
+   analyze_sast_semgrep    →  deep SAST (Semgrep taint / data-flow, multi-language)
 6. scan_dependencies       →  npm audit for vulnerable dependencies
 7. check_security_headers  →  verify security response headers
 8. test_cors               →  CORS misconfiguration check
@@ -150,6 +152,29 @@ It detects hardcoded secrets (API keys, passwords, tokens) in source code.
 Even without gitleaks, a regex fallback still flags hardcoded secrets.
 
 Supported: Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64)
+
+## SAST: Semgrep (deep engine)
+
+`analyze_sast_semgrep` wraps [Semgrep](https://semgrep.dev) to add SonarQube-class
+static analysis: thousands of community rules across many languages, taint-mode rules
+that track user input from a source to a dangerous sink, and CWE/OWASP metadata read
+straight from each rule.
+
+- **Execution** (first available wins): a native `semgrep` on `PATH`, then the
+  `semgrep/semgrep` Docker image. If neither exists the tool reports it and skips —
+  it never fails the run. `postinstall` attempts a `pipx`/`pip` install and otherwise
+  prints setup guidance.
+- **Rulesets** — defaults to `--config auto` (registry-selected rules; needs network).
+  Pass `config` to use a pack such as `p/security-audit` / `p/owasp-top-ten`, or a local
+  rule path.
+- **Severity** — mapped from Semgrep's own severity (`ERROR`→HIGH, `WARNING`→MEDIUM,
+  `INFO`→LOW). A finding that carries a data-flow trace (`dataflow_trace`) is elevated to
+  **CRITICAL** and labelled *Taint-confirmed*, with a `source → hops → sink` line in the
+  evidence.
+- **Data-flow traces** — the exported `dataflow_trace` is produced by Semgrep's **Pro
+  engine**. The OSS engine still runs taint-mode rules (reported at their declared
+  severity) but does not export the trace, so taint findings appear as HIGH rather than
+  CRITICAL on OSS.
 
 ## Safety & threat model
 

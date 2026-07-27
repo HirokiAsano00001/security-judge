@@ -1,6 +1,6 @@
 {
   "name": "security-judge",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Claude Code MCP tool for autonomous security testing (Agentic Hacking)",
   "type": "module",
   "engines": {
@@ -13,6 +13,7 @@
   "files": [
     "dist/",
     "scripts/install-gitleaks.js",
+    "scripts/install-semgrep.js",
     "README.md"
   ],
   "scripts": {
@@ -22,7 +23,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "postinstall": "node scripts/install-gitleaks.js"
+    "postinstall": "node scripts/install-gitleaks.js && node scripts/install-semgrep.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

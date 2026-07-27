@@ -8,5 +8,5 @@ scripts/hooks/
 tsconfig.json
 vitest.config.ts
 RDD.md
-AGENT.md
+CLAUDE.md
 .gitignore

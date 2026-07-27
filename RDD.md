@@ -329,7 +329,7 @@ interface Remediation {
 | **HTTPモック** | `msw`（またはnock） | 外部I/Oを決定論的にモック化 |
 | **配布** | `npm publish`（`npx security-judge@1.x` で起動） | バージョン指定付きnpxでサプライチェーンリスク低減 |
 
-> AGENT.md のデフォルト構成（React + MUI + Express + PostgreSQL）は**適用しない**。  
+> CLAUDE.md のデフォルト構成（React + MUI + Express + PostgreSQL）は**適用しない**。  
 > MCPツール単体（バックエンドのみ相当）として構成する。
 
 ---
