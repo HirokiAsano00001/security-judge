@@ -48,6 +48,7 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 |------|-------|-------------|
 | `analyze_sast_deep` | A02/A03/A08 | Regex SAST (30+ dangerous patterns) + hardcoded-secret and mass-assignment (`Object.assign(x, req.body)`) detection. gitleaks is used when present; a regex fallback still catches hardcoded secrets without it. |
 | `analyze_sast_semgrep` | A01–A08 | Semgrep-backed deep SAST: thousands of registry rules across languages, with taint / data-flow tracking (source → sink). Runs via a native `semgrep` install or the `semgrep/semgrep` Docker image; skips gracefully if neither is present. CWE/OWASP are read from Semgrep rule metadata. |
+| `analyze_taint` | A01/A03 | **Built-in** taint / data-flow SAST for TS/JS — no external tools, fully offline. Uses the TypeScript Compiler API to track user input (`req.query/body/params/…`) from source to a dangerous sink (SQLi, RCE, XSS, path traversal, open redirect, SSTI) within a file. Confirmed source→sink flows are CRITICAL with a data-flow trace. Zero-dependency confident SAST when Semgrep is unavailable. |
 | `scan_dependencies` | A06 | `npm audit` integration: find known vulnerable dependencies |
 
 ### Dynamic Testing
@@ -83,6 +84,7 @@ Then add to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`)
 3. crawl_target            →  discover endpoints from HTML
 4. scan_exposed_endpoints  →  wordlist scan for exposed paths
 5. analyze_sast_deep       →  regex SAST + secret detection from source
+   analyze_taint           →  built-in TS/JS taint analysis (offline, zero-dependency)
    analyze_sast_semgrep    →  deep SAST (Semgrep taint / data-flow, multi-language)
 6. scan_dependencies       →  npm audit for vulnerable dependencies
 7. check_security_headers  →  verify security response headers
@@ -152,6 +154,30 @@ It detects hardcoded secrets (API keys, passwords, tokens) in source code.
 Even without gitleaks, a regex fallback still flags hardcoded secrets.
 
 Supported: Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64)
+
+## SAST: built-in taint engine (`analyze_taint`)
+
+`analyze_taint` is a **zero-dependency, offline** taint analyzer for TS/JS. It parses
+source with the TypeScript Compiler API (no tsconfig, no network, no Docker) and tracks
+attacker-controlled input from a **source** to a dangerous **sink** within a single file:
+
+- **Sources**: `req.query/body/params/headers/cookies`, `request.*`, `ctx.request.body`,
+  `process.argv`, `location.search/hash`. (`process.env` is trusted config, not a source.)
+- **Sinks**: SQLi (`db.query`/`execute`/`raw`), RCE (`eval`/`Function`/`child_process.exec`),
+  XSS (`innerHTML`/`document.write`/`res.send`), path traversal (`fs.readFile*`/`sendFile`),
+  open redirect (`res.redirect`/`location.href`), SSTI (`ejs`/`pug`/`handlebars` render).
+- **Propagation**: variable assignments, string concatenation, template literals, aliasing
+  (`const q = req.query`), and pass-through string methods. **Sanitizers** (`parseInt`,
+  `Number`, `encodeURIComponent`, `escape`/`sanitize`-named helpers) and parameterized
+  queries (`db.query(sql, [param])`) remove taint to avoid false positives.
+- A confirmed flow is reported **CRITICAL** with evidence `Data-flow: source@L → N hop(s) → sink@L`.
+
+**Scope & limits (by design):** TS/JS only; **single file, intra-procedural** — no
+cross-file / cross-function taint, no tracking through user-defined function return values
+or object fields; destructuring (`const { id } = req.query`) is a known gap. It is a
+high-confidence CRITICAL-only engine, not a full replacement for Semgrep Pro's inter-file
+analysis. Use it as the always-available confident SAST; use `analyze_sast_semgrep` for
+broad multi-language coverage.
 
 ## SAST: Semgrep (deep engine)
 
