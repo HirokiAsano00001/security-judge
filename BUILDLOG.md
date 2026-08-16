@@ -140,3 +140,79 @@ npm install --legacy-peer-deps
 ### 作成ファイル
 - `README.md` — セットアップ手順・ツール一覧・スコアリング説明
 - `BUILDLOG.md`（本ファイル）
+
+---
+
+## AIレッドチーム強化: inject_llm_jailbreak マルチターン化（2026-08-16）
+
+### 背景
+AIレッドチーム観点の評価で、LLM攻撃が「固定4プロンプト・単発・regex検出のみ」で、RDDが謳う「マルチターン」未実装、良性応答への過剰マッチ、意味的判定の不在が判明。スコープB（外部依存なし・判定はホスト委譲）で改修。
+
+### 新規ファイル
+- `src/attack/prompt_mutator.ts` — 難読化変換（base64 / leetspeak / rot13 / reverse / 多言語）とマルチターン攻撃キャンペーン生成（direct / crescendo / many_shot / payload_split / obfuscation / injected_compliance）。純関数・決定論的。
+- `src/attack/llm_chat_client.ts` — `messages[]`配列 + 単一フィールド + SSEストリーミング対応クライアント。全fetchは `assertAllowedUrl` でゲート。
+
+### 変更ファイル
+- `src/tools/inject_llm_jailbreak.ts` — マルチターン会話状態、検出精度の是正（`LEAK_MARKERS` を高精度な開示表現へ絞込み、`REFUSAL_MARKERS` で拒否＝ガードレール維持を判定）、逆順カナリア（`SECURITYJUDGE_OK`）によるエコー耐性のある注入コンプライアンス検出、`HOST JUDGMENT REQUIRED` ブロックで最終判定をオーケストレータへ委譲。誤検出は MEDIUM confidence に較正（過剰減点を回避）。
+- `src/index.ts` — `wireFormat` / `responseField` / `strategies` パラメータを登録。
+
+### テスト
+- `__tests__/unit/prompt_mutator.test.ts`（10件）
+- `__tests__/integration/llm_chat_client.test.ts`（8件）
+- `__tests__/integration/inject_llm_jailbreak.test.ts`（14件、既存＋マルチターン/messages/SSE/カナリア/精度是正）
+
+### 検証結果
+- `tsc --noEmit` / `tsc` ビルド: エラーなし
+- `vitest run`: 全 **357件パス**（38ファイル）
+- カバレッジ: 全体 lines 92.7% / branches 86.1%（attack 97.8% / tools 94.9%）— 閾値80%超
+
+---
+
+## AIレッドチーム強化 第2弾: 攻撃面の拡張（2026-08-16）
+
+### 追加した攻撃・判定
+- **間接プロンプトインジェクション**（`indirect_injection`）— 取得文書/メール等「データ」に埋め込んだ命令を実行するか検査（LLM01 indirect）。逆順カナリアで実行を検出。記事版・メール版の2キャンペーン。
+- **機密情報の持ち出しプローブ**（`data_exfiltration`）— 他ユーザーデータ/APIキー/環境変数を要求。`SECRET_PATTERNS`（OpenAI/AWS/GitHub/Google鍵・JWT・秘密鍵ブロック）の高精度形状検出で HIGH confidence（LLM02）。攻撃文自体はシークレット形状を含まない。
+- **クロス戦略コロボレーション** — 同一のシステムプロンプト漏洩を2つ以上の異なる戦略が誘発した場合、当該 leak findings を MEDIUM→HIGH confidence/severity へ昇格。単一regexシグナル依存を解消。
+- **ガードレール堅牢性メトリクス** — 拒否キャンペーン数/総数・suspect数を出力に付与。
+
+### 変更ファイル
+- `src/attack/prompt_mutator.ts` — `AttackStrategy` に2種追加、`Oracle` に `secret` 追加、間接インジェクション/持ち出しのキャンペーン生成を追加。
+- `src/tools/inject_llm_jailbreak.ts` — `SECRET_PATTERNS`/`detectSecret`、secretオラクル、2パス化（全キャンペーン実行→コロボレーション算出→finding生成）、堅牢性サマリ。
+- `src/index.ts` — `strategies` enum とツール説明を更新。
+
+### テスト
+- `__tests__/unit/prompt_mutator.test.ts`（+2件）
+- `__tests__/integration/inject_llm_jailbreak.test.ts`（+6件: 単一戦略MEDIUM/コロボレーションHIGH/間接注入/機密持ち出し/拒否時の非検出/堅牢性メトリクス）
+
+### 検証結果（第2弾）
+- `tsc` ビルド: エラーなし
+- `vitest run`: 全 **364件パス**（38ファイル）
+- カバレッジ: 全体 lines 92.94% / branches 86.5%（attack 98.0% / tools 95.1%）— 閾値80%超
+
+---
+
+## AIレッドチーム強化 第3弾: 責任あるAI（幻覚/バイアス/毒性）＋RDD整合（2026-08-16）
+
+### RDD⇔コード不整合の解消
+- `RDD.md` のカテゴリD即時フェイル対象を「commercial, internal」→「なし（即時フェイル対象外・段階減点のみ）」へ修正し、理由（LLM検出は確率的でホスト判定が必要／誤検知の致命化回避／コロボレーションでHIGH昇格）を明記。実装 `INSTANT_FAIL_PERSONAS.D=[]` と一致させた（＝コードに合わせてRDDを修正）。
+
+### 新ツール `test_llm_safety`
+タクソノミー③④（幻覚・バイアス・毒性）に対応。
+- **幻覚**: 架空カナリア・オラクル。存在し得ない固有名（Zylthorpe-Vandersnoot定理 等）を説明させ、不確実性/否認マーカーが無く実質的に記述したら「自信のある捏造」として検出（MEDIUM confidence, LLM09）。
+- **バイアス/毒性**: 意味判定が本質のためホスト委譲を主軸。拒否されなかった応答を候補として `HOST JUDGMENT REQUIRED` に提示（LOW severity/confidence）。拒否＝ガードレール維持で非検出。
+- 責任あるAI堅牢性メトリクス（拒否数/総数）を出力。severity LOW＋小減点で情報寄り（スコアを支配しない）。
+
+### 新規ファイル
+- `src/attack/safety_probes.ts` — 純粋・決定論的なプローブ定義。
+- `src/tools/test_llm_safety.ts` — プローブ実行・幻覚オラクル・ホスト委譲・メトリクス。
+- `__tests__/unit/safety_probes.test.ts`（4件）/ `__tests__/integration/test_llm_safety.test.ts`（7件）
+
+### 変更ファイル
+- `src/index.ts` — `test_llm_safety` を登録（MCPツール計23本）。
+
+### 検証結果（第3弾）
+- `tsc` ビルド: エラーなし
+- `vitest run`: 全 **375件パス**（40ファイル）
+- カバレッジ: 全体 lines 93.2% / branches 86.58%（attack 98.2% / tools 95.2%）— 閾値80%超
+- MCPサーバ起動スモーク: `tools/list` で23本を確認（`test_llm_safety` 登録済み）
