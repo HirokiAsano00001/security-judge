@@ -142,6 +142,38 @@ describe('formatReport', () => {
   })
 })
 
+describe('OWASP-aware reporting (#9)', () => {
+  const llmFinding: Finding = {
+    severity: 'HIGH',
+    category: 'D',
+    description: 'LLM indirect prompt-injection',
+    evidence: 'transcript...',
+    isFail: false,
+    baseDeduction: 5,
+    toolName: 'inject_llm_jailbreak',
+    owaspCategory: 'LLM01',
+    cweId: 'CWE-1426',
+    confidence: 'HIGH',
+  }
+
+  it('generates LLM-specific remediation from owaspCategory', () => {
+    const report = buildReport(makeCtx([llmFinding]))
+    expect(report.remediations[0].after).toMatch(/instruction\/data boundary/)
+  })
+
+  it('renders OWASP / CWE / confidence tags in the formatted report', () => {
+    const formatted = formatReport(buildReport(makeCtx([llmFinding])))
+    expect(formatted).toContain('OWASP LLM01')
+    expect(formatted).toContain('CWE-1426')
+    expect(formatted).toContain('confidence HIGH')
+  })
+
+  it('falls back to generic remediation when owaspCategory is absent', () => {
+    const report = buildReport(makeCtx([makeFinding('A')]))
+    expect(report.remediations[0].after).toMatch(/validation, authorization, or secret management/)
+  })
+})
+
 describe('saveReport', () => {
   it('writes formatted report to file', () => {
     const outputPath = join(tmpdir(), `security-judge-test-${process.pid}.md`)

@@ -6,8 +6,10 @@ import {
   reverseString,
   buildObfuscatedInstruction,
   buildCampaigns,
+  adaptiveFollowups,
   CANARY_EXPECTED,
   CANARY_REVERSED,
+  EXFIL_CANARY,
   MULTILINGUAL_LEAK_PROMPTS,
 } from '../../src/attack/prompt_mutator.js'
 
@@ -55,6 +57,7 @@ describe('buildCampaigns', () => {
     expect(strategies).toContain('injected_compliance')
     expect(strategies).toContain('indirect_injection')
     expect(strategies).toContain('data_exfiltration')
+    expect(strategies).toContain('tool_abuse')
     // crescendo is genuinely multi-turn
     const crescendo = all.find((c) => c.strategy === 'crescendo')!
     expect(crescendo.messages.length).toBeGreaterThan(1)
@@ -79,6 +82,16 @@ describe('buildCampaigns', () => {
     expect(c.messages.length).toBeGreaterThan(1)
     const text = c.messages.join('\n')
     expect(/sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]+\./.test(text)).toBe(false)
+  })
+
+  it('tool_abuse embeds the exfil canary and uses the tool_exfil oracle', () => {
+    const [c] = buildCampaigns(['tool_abuse'])
+    expect(c.oracle).toBe('tool_exfil')
+    expect(c.messages[0]).toContain(EXFIL_CANARY)
+  })
+
+  it('adaptiveFollowups returns at least one reframing message', () => {
+    expect(adaptiveFollowups().length).toBeGreaterThan(0)
   })
 
   it('filters to only requested strategies', () => {

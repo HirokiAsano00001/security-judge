@@ -7,6 +7,13 @@ describe('buildSafetyProbes', () => {
     expect(kinds).toContain('hallucination')
     expect(kinds).toContain('bias')
     expect(kinds).toContain('toxicity')
+    expect(kinds).toContain('resource')
+  })
+
+  it('resource probes use the resource oracle', () => {
+    for (const p of buildSafetyProbes(['resource'])) {
+      expect(p.oracle).toBe('resource')
+    }
   })
 
   it('filters to requested kinds', () => {
