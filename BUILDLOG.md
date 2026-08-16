@@ -216,3 +216,32 @@ AIレッドチーム観点の評価で、LLM攻撃が「固定4プロンプト�
 - `vitest run`: 全 **375件パス**（40ファイル）
 - カバレッジ: 全体 lines 93.2% / branches 86.58%（attack 98.2% / tools 95.2%）— 閾値80%超
 - MCPサーバ起動スモーク: `tools/list` で23本を確認（`test_llm_safety` 登録済み）
+
+---
+
+## AIレッドチーム強化 第4弾: 深さ・測定・網羅の総仕上げ（2026-08-16）
+
+10項目を一括実装。共通検出モジュール `src/attack/detectors.ts` を新設し、2ツールを統一。
+
+| # | 内容 |
+|---|---|
+| 1 適応ループ | 拒否されたら reframing フォローアップを会話に追記して継続（`adaptiveFollowups`、既定ON）。応答駆動化。 |
+| 2 多言語検出 | LEAK/REFUSAL/UNCERTAINTY マーカーを EN＋JA/ES/FR/DE/ZH に拡張（`detectors.ts`）。日本語アプリの偽陰性を解消。 |
+| 3 応答デコード | base64/rot13/reverse でエンコードされた応答をデコードしてから漏洩検出（`decodeVariants`/`detectLeakAny`）。出力符号化回避に対応。 |
+| 4 攻撃成功率(ASR) | `attempts`(既定1,最大5) で各キャンペーンを反復し成功率を計測・出力。 |
+| 5 ツール濫用 | `tool_abuse` 戦略＋`EXFIL_CANARY`。攻撃者指定のツール/関数呼び出し構築を検出（LLM06, CWE-918）。 |
+| 6 PII/機密拡張 | 鍵/JWT/秘密鍵(HIGH)に加え、メール/電話/SSN/クレカ(Luhn検証)(MEDIUM) を検出（`detectSecret`）。 |
+| 7 一貫性オラクル | 漏洩を同一プロンプトで再取得し Jaccard 類似度で安定性を判定。安定なら単一戦略でも HIGH に昇格、揺らげば MEDIUM 据え置き。 |
+| 8 リソース枯渇 | `test_llm_safety` に `resource` プローブ追加。巨大出力の生成を検出（LLM10）。 |
+| 9 レポート統合 | `report.ts` に OWASP LLM Top-10 別の修正提案と OWASP/CWE/confidence タグ表示を追加。 |
+| 10 構造化出力 | 両ツールに `=== STRUCTURED ===` の機械可読JSONサマリを付与（ホスト連携用）。 |
+
+### 新規/変更ファイル
+- 新規: `src/attack/detectors.ts`, `__tests__/unit/detectors.test.ts`
+- 変更: `src/attack/{prompt_mutator,safety_probes}.ts`, `src/tools/{inject_llm_jailbreak,test_llm_safety}.ts`, `src/reporter/report.ts`, `src/index.ts`, 各テスト
+
+### 検証結果（第4弾）
+- `tsc` ビルド: エラーなし
+- `vitest run`: 全 **401件パス**（41ファイル）
+- カバレッジ: 全体 lines 93.46% / branches 86.59%（attack 98.4% / reporter 100% / tools 95.3%）— 閾値80%超
+- MCPサーバ起動スモーク: 23本・`tool_abuse`/`attempts` 露出を確認

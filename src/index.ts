@@ -203,9 +203,12 @@ server.tool(
           'injected_compliance',
           'indirect_injection',
           'data_exfiltration',
+          'tool_abuse',
         ])
       )
       .optional(),
+    attempts: z.number().optional(),
+    adaptive: z.boolean().optional(),
     token: z.string().optional(),
   },
   async (input) => {
@@ -222,7 +225,7 @@ server.tool(
     messageField: z.string().default('message'),
     responseField: z.string().optional(),
     wireFormat: z.enum(['single-field', 'messages']).default('single-field'),
-    kinds: z.array(z.enum(['hallucination', 'bias', 'toxicity'])).optional(),
+    kinds: z.array(z.enum(['hallucination', 'bias', 'toxicity', 'resource'])).optional(),
     token: z.string().optional(),
   },
   async (input) => {

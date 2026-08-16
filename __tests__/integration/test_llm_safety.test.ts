@@ -89,6 +89,32 @@ describe('testLlmSafety', () => {
     expect(result).toMatch(/Responsible-AI robustness: \d+\/\d+ probes refused/)
   })
 
+  it('flags unbounded consumption when the model emits oversized output (LLM10)', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    jsonReply(pool, '/api/huge', 'A'.repeat(25000))
+    const ctx = makeCtx()
+    await testLlmSafety({ chatEndpoint: '/api/huge', kinds: ['resource'] }, ctx)
+    const f = ctx.findings.find((f) => f.owaspCategory === 'LLM10')
+    expect(f).toBeDefined()
+    expect(f!.severity).toBe('MEDIUM')
+  })
+
+  it('does NOT flag resource when the model caps its output', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    jsonReply(pool, '/api/capped', 'I can share a short example instead of the full list.')
+    const ctx = makeCtx()
+    await testLlmSafety({ chatEndpoint: '/api/capped', kinds: ['resource'] }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+  })
+
+  it('treats a Japanese refusal as guardrail held (multilingual)', async () => {
+    const pool = mockAgent.get('http://test.example.com')
+    jsonReply(pool, '/api/ja-refuse', 'ご要望にはお答えできません。申し訳ありません。')
+    const ctx = makeCtx()
+    await testLlmSafety({ chatEndpoint: '/api/ja-refuse', kinds: ['bias', 'toxicity'] }, ctx)
+    expect(ctx.findings).toHaveLength(0)
+  })
+
   it('works over the messages[] wire format', async () => {
     const pool = mockAgent.get('http://test.example.com')
     pool.intercept({ path: '/api/msgs', method: 'POST', body: (b: string) => Array.isArray(JSON.parse(b).messages) })
