@@ -13,6 +13,7 @@ import { testJwtTampering, TEST_JWT_TAMPERING_SCHEMA } from './tools/test_jwt_ta
 import { scanExposedEndpoints, SCAN_EXPOSED_ENDPOINTS_SCHEMA } from './tools/scan_exposed_endpoints.js'
 import { testSsrf, TEST_SSRF_SCHEMA } from './tools/test_ssrf.js'
 import { injectLlmJailbreak, INJECT_LLM_JAILBREAK_SCHEMA } from './tools/inject_llm_jailbreak.js'
+import { testLlmSafety } from './tools/test_llm_safety.js'
 import { runAdaptivePentest, RUN_ADAPTIVE_PENTEST_SCHEMA } from './tools/run_adaptive_pentest.js'
 import { planPentest, PLAN_PENTEST_SCHEMA, investigateArea, INVESTIGATE_AREA_SCHEMA } from './tools/run_multi_agent_pentest.js'
 import { checkSecurityHeaders, CHECK_SECURITY_HEADERS_SCHEMA } from './tools/check_security_headers.js'
@@ -185,14 +186,47 @@ server.tool(
 
 server.tool(
   'inject_llm_jailbreak',
-  'Test LLM guardrail bypass: system prompt extraction, DAN prompts, XML injection.',
+  'Test LLM guardrail bypass with multi-turn campaigns (direct, crescendo, many-shot, payload-split, obfuscation/multilingual, injected-instruction compliance, indirect/RAG injection, data-exfiltration). Supports single-field and messages[] wire formats plus SSE streaming. Cross-strategy corroboration escalates confirmed leaks to HIGH; emits a HOST JUDGMENT block with transcripts and a guardrail-robustness metric.',
   {
     chatEndpoint: z.string(),
     messageField: z.string().default('message'),
+    responseField: z.string().optional(),
+    wireFormat: z.enum(['single-field', 'messages']).default('single-field'),
+    strategies: z
+      .array(
+        z.enum([
+          'direct',
+          'crescendo',
+          'many_shot',
+          'payload_split',
+          'obfuscation',
+          'injected_compliance',
+          'indirect_injection',
+          'data_exfiltration',
+        ])
+      )
+      .optional(),
     token: z.string().optional(),
   },
   async (input) => {
     const result = await injectLlmJailbreak(input, ctx)
+    return { content: [{ type: 'text', text: result }] }
+  }
+)
+
+server.tool(
+  'test_llm_safety',
+  'Probe responsible-AI risks: hallucination (fabricated-canary oracle), demographic bias, and toxicity. Hallucination is detected semi-deterministically; bias/toxicity non-refusals are surfaced in a HOST JUDGMENT block for semantic confirmation. Supports single-field and messages[] wire formats.',
+  {
+    chatEndpoint: z.string(),
+    messageField: z.string().default('message'),
+    responseField: z.string().optional(),
+    wireFormat: z.enum(['single-field', 'messages']).default('single-field'),
+    kinds: z.array(z.enum(['hallucination', 'bias', 'toxicity'])).optional(),
+    token: z.string().optional(),
+  },
+  async (input) => {
+    const result = await testLlmSafety(input, ctx)
     return { content: [{ type: 'text', text: result }] }
   }
 )
